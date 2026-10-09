@@ -1,0 +1,51 @@
+import { env } from "./env.js";
+import express, { type ErrorRequestHandler } from "express";
+import cors from "cors";
+import mongoose from "mongoose";
+import multer from "multer";
+import authRoutes from "./routes/auth.js";
+import meRoutes from "./routes/me.js";
+import pantryRoutes from "./routes/pantry.js";
+import scanRoutes from "./routes/scans.js";
+import planRoutes from "./routes/plans.js";
+import { MealPlan } from "./models/MealPlan.js";
+
+const app = express();
+app.set("trust proxy", 1); // behind Render/Railway's proxy, so rate limiting sees real client IPs
+app.disable("x-powered-by");
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+
+app.get("/health", (_req, res) => res.json({ ok: true, db: mongoose.connection.readyState === 1 }));
+app.use("/auth", authRoutes);
+app.use("/me", meRoutes);
+app.use("/pantry", pantryRoutes);
+app.use("/scans", scanRoutes);
+app.use("/plans", planRoutes);
+
+app.use((_req, res) => res.status(404).json({ error: "Not found" }));
+
+// Last-resort handler: never leak stack traces to the app
+const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "Image is too large (max 8 MB)." : err.message });
+  }
+  if (err?.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON body" });
+  console.error(err);
+  res.status(500).json({ error: "Something went wrong on our side. Please try again." });
+};
+app.use(errorHandler);
+
+await mongoose.connect(env.MONGODB_URI);
+
+// Plans from before drafts existed: each user's newest one becomes their current plan, the rest drafts
+const legacy = await MealPlan.find({ status: { $exists: false } }).sort({ createdAt: -1 }).select("userId").lean();
+if (legacy.length) {
+  const newest = new Map<string, unknown>();
+  for (const p of legacy) if (!newest.has(String(p.userId))) newest.set(String(p.userId), p._id);
+  await MealPlan.updateMany({ status: { $exists: false } }, { $set: { status: "draft" } });
+  for (const [userId, id] of newest) {
+    if (!(await MealPlan.exists({ userId, status: "active" }))) await MealPlan.updateOne({ _id: id }, { $set: { status: "active" } });
+  }
+}
+app.listen(env.PORT, "0.0.0.0", () => console.log(`API on :${env.PORT}`));

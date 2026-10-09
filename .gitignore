@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+
+# env / secrets
+.env
+.env*.local
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.mobileprovision
+
+# build / tooling output
+dist/
+web-build/
+.expo/
+*.tsbuildinfo
+.metro-health-check*
+
+# generated native folders
+mobile/ios/
+mobile/android/
+
+# logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# OS / editor
+.DS_Store
+
+# local tool folders
+.aws/
+.codex/
+.agents/
+
+# scratch
+server/_tmp_scan.ts
