@@ -6,6 +6,7 @@ import { generatePlan, MEAL_TYPES } from "../ai/plan.js";
 import { AIError } from "../ai/gemini.js";
 import { buildShoppingList } from "../lib/shopping.js";
 import { normalize } from "../lib/ingredients.js";
+import { convert } from "../lib/units.js";
 import { consumeIngredients, previewConsumption, restoreIngredients } from "../lib/consume.js";
 import { annotateReadiness } from "../lib/readiness.js";
 import { consumeUsage, refundUsage } from "../lib/usage.js";
@@ -23,8 +24,8 @@ const generateSchema = z.object({
   maxExtraItems: z.number().int().min(0).max(30).nullable().default(null),
 });
 
-const pantryNamesFor = async (userId: string) =>
-  (await PantryItem.find({ userId }).select("name").lean()).map((p) => p.name);
+const pantryFor = async (userId: string) =>
+  (await PantryItem.find({ userId }).select("name quantity unit").lean()).map((p) => ({ name: p.name, quantity: p.quantity ?? 0, unit: p.unit ?? "" }));
 
 // The app sends its local midnight so day numbers line up with the user's calendar
 const todaySchema = z.coerce.date().optional();
@@ -40,15 +41,18 @@ type PlanDoc = NonNullable<Awaited<ReturnType<typeof MealPlan.findOne>>>;
 
 /** Rebuilds the shopping list for meals not made yet, keeping ticks on items that are still needed. */
 async function refreshShoppingList(plan: PlanDoc, userId: string) {
-  const pantryNames = await pantryNamesFor(userId);
+  const pantry = await pantryFor(userId);
   const key = (i: { name?: string | null; unit?: string | null }) => `${normalize(i.name ?? "")}|${(i.unit ?? "").toLowerCase()}`;
-  const checked = new Set(plan.shoppingList.filter((i) => i.checked).map(key));
+  const previous = new Map(plan.shoppingList.map((i) => [key(i), i]));
   const meals = plan.days.flatMap((d) => d.meals).filter((m) => !m.made) as any[];
-  plan.set("shoppingList", buildShoppingList(meals, pantryNames).map((i) => ({ ...i, checked: checked.has(key(i)) })));
+  plan.set("shoppingList", buildShoppingList(meals, pantry).map((i) => {
+    const old = previous.get(key(i));
+    return { ...i, ...(old ? { _id: old._id } : {}), checked: Boolean(old?.checked && (old.quantity ?? 0) >= i.quantity) };
+  }));
 }
 
 const respondWith = async (res: any, plan: PlanDoc, userId: string) =>
-  res.json(annotateReadiness(plan.toObject() as any, await pantryNamesFor(userId)));
+  res.json(annotateReadiness(plan.toObject() as any, await pantryFor(userId)));
 
 router.post("/", async (req: AuthRequest, res) => {
   const parsed = generateSchema.safeParse(req.body);
@@ -83,7 +87,7 @@ router.post("/", async (req: AuthRequest, res) => {
       })),
     });
 
-    const shoppingList = buildShoppingList(plan.days.flatMap((d) => d.meals), pantry.map((p) => p.name));
+    const shoppingList = buildShoppingList(plan.days.flatMap((d) => d.meals), pantry.map((p) => ({ name: p.name, quantity: p.quantity ?? 0, unit: p.unit ?? "" })));
     // Saved as a draft: the user decides whether and how it goes into their plan
     const saved = await MealPlan.create({
       userId: req.userId,
@@ -93,7 +97,7 @@ router.post("/", async (req: AuthRequest, res) => {
       shoppingList,
       settingsSnapshot: { ...prefs, mealTypes: parsed.data.mealTypes, maxExtraItems: parsed.data.maxExtraItems },
     });
-    res.status(201).json(annotateReadiness(saved.toObject() as any, pantry.map((p) => p.name)));
+    res.status(201).json(annotateReadiness(saved.toObject() as any, pantry.map((p) => ({ name: p.name, quantity: p.quantity ?? 0, unit: p.unit ?? "" }))));
   } catch (err) {
     await refundUsage(req.userId!, "plansThisMonth");
     if (err instanceof AIError) return res.status(err.status).json({ error: err.message });
@@ -103,17 +107,22 @@ router.post("/", async (req: AuthRequest, res) => {
 });
 
 router.get("/", async (req: AuthRequest, res) => {
-  const [plans, pantryNames] = await Promise.all([
+  const [plans, pantry] = await Promise.all([
     MealPlan.find({ userId: req.userId })
       .sort({ createdAt: -1 })
       .limit(20)
-      .select("title status startDate createdAt days.day days.meals.ingredients.name shoppingList settingsSnapshot.maxExtraItems")
+      .select("title status startDate createdAt days.day days.meals.ingredients days.meals.made shoppingList settingsSnapshot.maxExtraItems")
       .lean(),
-    pantryNamesFor(req.userId!),
+    pantryFor(req.userId!),
   ]);
   res.json(
     plans.map((p) => {
-      const { readyMeals, totalMeals } = annotateReadiness(p as any, pantryNames);
+      const { readyMeals, totalMeals } = annotateReadiness(p as any, pantry);
+      const shopping = buildShoppingList(p.days.flatMap((d) => d.meals) as any, pantry);
+      const checkedCount = shopping.filter((item) => p.shoppingList.some((old) =>
+        old.checked && normalize(old.name ?? "") === normalize(item.name) &&
+        (convert(old.quantity ?? 0, old.unit ?? "", item.unit) ?? 0) >= item.quantity
+      )).length;
       return {
         _id: p._id,
         title: p.title,
@@ -121,8 +130,8 @@ router.get("/", async (req: AuthRequest, res) => {
         startDate: p.startDate,
         createdAt: p.createdAt,
         dayCount: p.days.length,
-        shoppingTotal: p.shoppingList.length,
-        shoppingChecked: p.shoppingList.filter((i) => i.checked).length,
+        shoppingTotal: shopping.length,
+        shoppingChecked: checkedCount,
         maxExtraItems: (p.settingsSnapshot as any)?.maxExtraItems ?? null,
         readyMeals,
         totalMeals,
@@ -133,12 +142,14 @@ router.get("/", async (req: AuthRequest, res) => {
 
 router.get("/:id", async (req: AuthRequest, res) => {
   if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
-  const [plan, pantryNames] = await Promise.all([
-    MealPlan.findOne({ _id: req.params.id, userId: req.userId }).lean(),
-    pantryNamesFor(req.userId!),
+  const [plan, pantry] = await Promise.all([
+    MealPlan.findOne({ _id: req.params.id, userId: req.userId }),
+    pantryFor(req.userId!),
   ]);
   if (!plan) return res.status(404).json({ error: "Plan not found" });
-  res.json(annotateReadiness(plan as any, pantryNames));
+  await refreshShoppingList(plan, req.userId!);
+  await plan.save();
+  res.json(annotateReadiness(plan.toObject() as any, pantry));
 });
 
 router.patch("/:id/shopping/:itemId", async (req: AuthRequest, res) => {
