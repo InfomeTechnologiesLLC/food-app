@@ -102,9 +102,6 @@ export default function PlansScreen() {
 
       {drafts.length > 0 && (
         <Section title="Generated, not added">
-          <ThemedText type="small" themeColor="textSecondary">
-            Open one to use it, add some of its days to your plan, or swap a day in.
-          </ThemedText>
           {drafts.map((p) => <PlanRow key={p._id} plan={p} />)}
         </Section>
       )}
