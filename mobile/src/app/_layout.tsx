@@ -3,9 +3,10 @@ import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-rout
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { AlertHost } from '@/components/themed-alert';
+import { PlanHeader } from '@/components/plan-header';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -39,7 +40,15 @@ function RootNavigator() {
         <Stack.Protected guard={!!user?.onboarded}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="upgrade" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
-          <Stack.Screen name="plan/[id]" options={{ headerShown: true, title: 'Meal plan' }} />
+          <Stack.Screen name="plan/[id]" options={{
+            headerShown: true,
+            title: 'Meal plan',
+            ...(Platform.OS === 'android' && {
+              header: ({ options, navigation, back }) => (
+                <PlanHeader title={options.title ?? 'Meal plan'} onBack={() => navigation.goBack()} canGoBack={!!back} />
+              ),
+            }),
+          }} />
           <Stack.Screen
             name="pantry-item"
             options={{ presentation: 'modal', headerShown: true, title: 'Pantry item' }}
