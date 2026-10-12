@@ -3,6 +3,7 @@ import { type Href, router } from 'expo-router';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BmiCard } from '@/components/bmi-card';
+import { DailyProgressCard } from '@/components/daily-progress-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { humanize } from '@/components/ui';
@@ -10,19 +11,12 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { daysUntil, usePantry } from '@/lib/pantry';
-import { activePlan, planDayDate, today, usePlans } from '@/lib/plans';
+import { activePlan, usePlan, usePlans } from '@/lib/plans';
 import type { PantryItem } from '@/lib/types';
 import { formatQty } from '@/lib/quantities';
 import { remaining } from '@/lib/usage';
 
 const plural = (n: number, word: string) => `${word}${n === 1 ? '' : 's'}`;
-
-/** Days of the plan from today through its last day. */
-function daysAhead(startDate: string | undefined, dayCount: number) {
-  if (!startDate) return 0;
-  const last = planDayDate(startDate, dayCount).getTime();
-  return Math.max(0, Math.round((last - today().getTime()) / 86_400_000) + 1);
-}
 
 function StatTile({ value, label, icon, iconColor, href }: {
   value: number | string;
@@ -81,18 +75,23 @@ export default function HomeScreen() {
   const theme = useTheme();
   const { user } = useAuth();
   const { data: items = [], isLoading, refetch, isRefetching } = usePantry();
-  const { data: plans = [], refetch: refetchPlans } = usePlans();
+  const { data: plans = [], refetch: refetchPlans, isLoading: plansLoading, error: plansError, isRefetching: plansRefetching } = usePlans();
   const latest = activePlan(plans);
+  const { data: currentPlan, isLoading: planLoading, error: planError, refetch: refetchPlan, isRefetching: planRefetching } = usePlan(latest?._id);
+  const refresh = () => {
+    refetch();
+    refetchPlans();
+    if (latest) refetchPlan();
+  };
   const scansLeft = remaining(user, 'scans');
   const expiringSoon = items.filter((i) => i.expiryDate && daysUntil(i.expiryDate) <= 3);
   const freshness = [...expiringSoon].sort((a, b) => daysUntil(a.expiryDate!) - daysUntil(b.expiryDate!));
-  const ahead = latest ? daysAhead(latest.startDate, latest.dayCount) : 0;
   const toBuy = latest ? latest.shoppingTotal - latest.shoppingChecked : 0;
   const progress = latest && latest.totalMeals > 0 ? latest.readyMeals / latest.totalMeals : 0;
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { refetch(); refetchPlans(); }} />}>
+    <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching || plansRefetching || planRefetching} onRefresh={refresh} />}>
       <View style={{ gap: Spacing.one, paddingTop: Spacing.two }}>
         <ThemedText type="small" themeColor="textSecondary">{dateLabel}</ThemedText>
         <ThemedText type="subtitle">
@@ -123,13 +122,7 @@ export default function HomeScreen() {
             iconColor={theme.warning}
             href="/pantry"
           />
-          <StatTile
-            value={ahead}
-            label={`${plural(ahead, 'Day')} planned ahead`}
-            icon="restaurant-outline"
-            iconColor={theme.textSecondary}
-            href="/plans"
-          />
+          <BmiCard />
         </View>
       </View>
 
@@ -158,13 +151,16 @@ export default function HomeScreen() {
       <Pressable
         onPress={() => (latest ? router.push({ pathname: '/plan/[id]', params: { id: latest._id } }) : router.navigate('/plans'))}
         style={({ pressed }) => [styles.tile, { gap: Spacing.three, marginTop: Spacing.three, backgroundColor: theme.backgroundElement, borderColor: theme.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 }]}>
-        <View style={{ gap: Spacing.two }}>
-          <ThemedText style={[styles.eyebrow, { color: theme.textSecondary }]}>
-            {latest ? `${latest.dayCount}-DAY MEAL PLAN` : 'MEAL PLAN'}
-          </ThemedText>
-          <ThemedText style={{ fontSize: 22, lineHeight: 28, fontWeight: 600 }}>
-            {latest ? latest.title : 'Plan your meals'}
-          </ThemedText>
+        <View style={[styles.rowBetween, { gap: Spacing.two }]}>
+          <View style={{ flex: 1, gap: Spacing.two }}>
+            <ThemedText style={[styles.eyebrow, { color: theme.textSecondary }]}>
+              {latest ? `${latest.dayCount}-DAY MEAL PLAN` : 'MEAL PLAN'}
+            </ThemedText>
+            <ThemedText style={{ fontSize: 22, lineHeight: 28, fontWeight: 600 }}>
+              {latest ? latest.title : 'Plan your meals'}
+            </ThemedText>
+          </View>
+          <Ionicons name="arrow-forward" size={22} color={theme.tint} />
         </View>
 
         {latest ? (
@@ -184,14 +180,14 @@ export default function HomeScreen() {
         ) : (
           <ThemedText type="small" themeColor="textSecondary">Turn your pantry into a 1–7 day plan.</ThemedText>
         )}
-
-        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, paddingTop: Spacing.three }}>
-          <Ionicons style={{ alignSelf: 'flex-end' }} name="arrow-forward" size={22} color={theme.tint} />
-        </View>
       </Pressable>
 
-      <BmiCard />
-
+      <DailyProgressCard
+        plan={currentPlan}
+        loading={plansLoading || planLoading}
+        error={plansError ?? planError}
+        onRetry={refresh}
+      />
       {freshness.length > 0 && (
         <View style={{ marginTop: Spacing.two }}>
           <View style={[styles.rowBetween, { alignItems: 'center', marginBottom: Spacing.one }]}>
