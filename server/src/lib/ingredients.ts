@@ -27,11 +27,11 @@ export function extraIngredients(meals: { ingredients: { name: string }[] }[], p
   return [...extras.values()];
 }
 
-/** True when one name contains the other as whole words, e.g. "chicken breast" ~ "chicken". */
+/** Exact normalized names only: sharing words does not make ingredients interchangeable. */
 export function sameIngredient(a: string, b: string) {
-  const na = ` ${normalize(a)} `;
-  const nb = ` ${normalize(b)} `;
-  return na.includes(nb) || nb.includes(na);
+  const na = normalize(a);
+  const nb = normalize(b);
+  return na.length > 0 && na === nb;
 }
 
 // Words that reveal an allergen even when the allergen itself isn't named.
