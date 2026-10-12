@@ -25,9 +25,8 @@ router.patch("/preferences", async (req: AuthRequest, res) => {
   }
   const user = await User.findByIdAndUpdate(
     req.userId,
-    { $set: { ...set, onboarded: true }, $unset: { "preferences.servings": "" } },
-    // Allow removing the legacy field, which is no longer in the model schema.
-    { new: true, strict: false }
+    { $set: { ...set, onboarded: true } },
+    { new: true, runValidators: true }
   );
   if (!user) return res.status(401).json({ error: "Account not found" });
   res.json(toPublicUser(user));

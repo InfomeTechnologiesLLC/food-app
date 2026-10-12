@@ -6,7 +6,6 @@ type Counter = "scansThisMonth" | "plansThisMonth";
 export const LIMITS: Record<string, Record<Counter, number>> = {
   free: { scansThisMonth: 5, plansThisMonth: 3 },
   plus: { scansThisMonth: Infinity, plansThisMonth: Infinity },
-  family: { scansThisMonth: Infinity, plansThisMonth: Infinity },
 };
 
 export const currentPeriod = () => new Date().toISOString().slice(0, 7); // "2026-10"
@@ -42,9 +41,6 @@ export async function refundUsage(userId: string, counter: Counter) {
 /** User as the app sees it: no password hash, usage reset if it's from an old month, plus the plan's limits. */
 export function toPublicUser(user: { toObject: () => any }) {
   const { passwordHash, ...u } = user.toObject();
-  // Older accounts may still contain a multi-person preference. Never expose it.
-  if (u.preferences) delete u.preferences.servings;
-  if (u.plan === "family") u.plan = "plus";
   const stale = u.usage?.period !== currentPeriod();
   const limits = LIMITS[u.plan] ?? LIMITS.free;
   return {

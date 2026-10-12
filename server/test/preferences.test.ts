@@ -18,17 +18,17 @@ async function patch(body: unknown) {
 }
 const publicDocument = { toObject: () => ({ plan: "free", preferences: {}, usage: {} }) };
 
-test("measurements save with a server timestamp and remove legacy serving preferences", async (t) => {
+test("measurements save with a server timestamp and model validation", async (t) => {
   const update = t.mock.method(User, "findByIdAndUpdate", async () => publicDocument);
   const before = Date.now();
-  assert.equal((await patch({ heightCm: 170, weightKg: 65, servings: 6, weightUpdatedAt: "1900-01-01" })).status, 200);
+  assert.equal((await patch({ heightCm: 170, weightKg: 65, weightUpdatedAt: "1900-01-01" })).status, 200);
   const args = update.mock.calls[0]!.arguments as any[];
   assert.equal(args[1].$set["preferences.heightCm"], 170);
   assert.equal(args[1].$set["preferences.weightKg"], 65);
   assert.ok(args[1].$set["preferences.weightUpdatedAt"].getTime() >= before);
-  assert.equal(args[1].$set["preferences.servings"], undefined);
-  assert.deepEqual(args[1].$unset, { "preferences.servings": "" });
-  assert.equal(args[2].strict, false);
+  assert.equal(args[1].$unset, undefined);
+  assert.equal(args[2].strict, undefined);
+  assert.equal(args[2].runValidators, true);
 });
 
 test("invalid measurements cannot reach persistence", async (t) => {
@@ -47,10 +47,10 @@ test("other preference changes do not refresh the weight check-in; clearing weig
   assert.equal((update.mock.calls[1]!.arguments as any[])[1].$set["preferences.weightUpdatedAt"], null);
 });
 
-test("old household accounts expose a personal plan without servings", () => {
-  const user = toPublicUser({ toObject: () => ({ plan: "family", preferences: { servings: 6, heightCm: 170 }, usage: {} }) });
+test("personal accounts expose their stored plan and measurements", () => {
+  const user = toPublicUser({ toObject: () => ({ plan: "plus", preferences: { heightCm: 170, weightKg: 65 }, usage: {} }) });
   assert.equal(user.plan, "plus");
-  assert.equal(user.preferences.servings, undefined);
   assert.equal(user.preferences.heightCm, 170);
+  assert.equal(user.preferences.weightKg, 65);
   assert.equal(user.limits.plansPerMonth, null);
 });

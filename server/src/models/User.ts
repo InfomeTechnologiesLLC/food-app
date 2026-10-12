@@ -4,8 +4,7 @@ const userSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
-    // Retain the legacy family value for existing accounts; the API presents it as Plus.
-    plan: { type: String, enum: ["free", "plus", "family"], default: "free" },
+    plan: { type: String, enum: ["free", "plus"], default: "free" },
     preferences: {
       diet: { type: String, default: "none" },
       allergies: { type: [String], default: [] },
