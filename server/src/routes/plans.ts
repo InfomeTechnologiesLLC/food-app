@@ -78,7 +78,7 @@ router.post("/", async (req: AuthRequest, res) => {
       // Keep the requested meal order consistent (breakfast → snack)
       mealTypes: MEAL_TYPES.filter((t) => parsed.data.mealTypes.includes(t)),
       maxExtraItems: parsed.data.maxExtraItems,
-      prefs: { diet: prefs.diet!, allergies: prefs.allergies ?? [], goal: prefs.goal!, budget: prefs.budget!, servings: prefs.servings! },
+      prefs: { diet: prefs.diet!, allergies: prefs.allergies ?? [], goal: prefs.goal!, budget: prefs.budget!, heightCm: prefs.heightCm, weightKg: prefs.weightKg },
       pantry: pantry.map((p) => ({
         name: p.name,
         quantity: p.quantity!,

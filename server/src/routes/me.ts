@@ -12,17 +12,22 @@ const preferencesSchema = z.object({
   allergies: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(20),
   goal: z.enum(["balanced", "weight_loss", "muscle_gain", "budget"]),
   budget: z.enum(["low", "medium", "high"]),
-  servings: z.number().int().min(1).max(12),
+  heightCm: z.number().min(50).max(250).nullable(),
+  weightKg: z.number().min(10).max(500).nullable(),
 });
 
 router.patch("/preferences", async (req: AuthRequest, res) => {
   const parsed = preferencesSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const set = Object.fromEntries(Object.entries(parsed.data).map(([k, v]) => [`preferences.${k}`, v]));
+  const set: Record<string, unknown> = Object.fromEntries(Object.entries(parsed.data).map(([k, v]) => [`preferences.${k}`, v]));
+  if (parsed.data.weightKg !== undefined) {
+    set["preferences.weightUpdatedAt"] = parsed.data.weightKg === null ? null : new Date();
+  }
   const user = await User.findByIdAndUpdate(
     req.userId,
-    { $set: { ...set, onboarded: true } },
-    { new: true }
+    { $set: { ...set, onboarded: true }, $unset: { "preferences.servings": "" } },
+    // Allow removing the legacy field, which is no longer in the model schema.
+    { new: true, strict: false }
   );
   if (!user) return res.status(401).json({ error: "Account not found" });
   res.json(toPublicUser(user));

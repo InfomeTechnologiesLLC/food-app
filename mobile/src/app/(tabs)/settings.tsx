@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BottomSheet } from '@/components/bottom-sheet';
-import { BUDGETS, COMMON_ALLERGIES, DIETS, GOALS, SERVINGS } from '@/components/preferences-form';
+import { BUDGETS, COMMON_ALLERGIES, DIETS, GOALS } from '@/components/preferences-form';
+import { MeasurementsForm } from '@/components/measurements-form';
 import { ReminderSettings } from '@/components/reminder-settings';
 import { ListCard, ListRow, SectionLabel } from '@/components/settings-list';
 import { Screen } from '@/components/screen';
@@ -18,17 +19,15 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import type { Preferences } from '@/lib/types';
 
-type Field = 'diet' | 'allergies' | 'goal' | 'servings' | 'budget';
+type Field = 'diet' | 'allergies' | 'goal' | 'measurements' | 'budget';
 
 const SHEET_TITLES: Record<Field, string> = {
   diet: 'Diet',
   allergies: 'Allergies',
   goal: 'Health goal',
-  servings: 'Cooking for',
+  measurements: 'Body measurements',
   budget: 'Budget',
 };
-
-const formatServings = (n: number) => (n === 1 ? '1 person' : `${n} people`);
 
 /** "alex.smith@x.com" → "Alex" */
 const nameFromEmail = (email: string) => humanize(email.split('@')[0].split(/[._\-+0-9]/)[0] || email.split('@')[0]);
@@ -63,7 +62,8 @@ export default function SettingsScreen() {
     if (!draft) return;
     setSaving(true);
     try {
-      await updatePreferences(draft);
+      if (!editing || editing === "measurements") return;
+      await updatePreferences({ [editing]: draft[editing] });
       close();
     } catch (e) {
       showAlert('Could not save', (e as Error).message);
@@ -99,7 +99,7 @@ export default function SettingsScreen() {
         <ListRow icon="leaf-outline" iconColor={theme.tint} label="Diet" value={prefs.diet === 'none' ? 'No restrictions' : humanize(prefs.diet)} onPress={() => open('diet')} />
         <ListRow icon="shield-outline" iconColor={theme.danger} label="Allergies" value={summarizeAllergies(prefs.allergies)} onPress={() => open('allergies')} />
         <ListRow icon="radio-button-on-outline" iconColor={theme.warning} label="Health goal" value={humanize(prefs.goal)} onPress={() => open('goal')} />
-        <ListRow icon="people-outline" label="Cooking for" value={formatServings(prefs.servings)} onPress={() => open('servings')} />
+        <ListRow icon="body-outline" label="Body measurements" value={[prefs.heightCm ? `${prefs.heightCm} cm` : null, prefs.weightKg ? `${prefs.weightKg} kg` : null].filter(Boolean).join(' · ') || 'Add height and weight'} onPress={() => open('measurements')} />
         <ListRow icon="card-outline" label="Budget" value={humanize(prefs.budget)} onPress={() => open('budget')} />
       </ListCard>
 
@@ -157,18 +157,11 @@ export default function SettingsScreen() {
         {draft && editing === 'goal' && (
           <ChipGroup options={GOALS} value={draft.goal} onChange={(v) => set('goal', v)} format={humanize} />
         )}
-        {draft && editing === 'servings' && (
-          <ChipGroup
-            options={SERVINGS}
-            value={draft.servings as (typeof SERVINGS)[number]}
-            onChange={(v) => set('servings', v)}
-            format={formatServings}
-          />
-        )}
+        {editing === 'measurements' && <MeasurementsForm initial={prefs} onSaved={close} />}
         {draft && editing === 'budget' && (
           <ChipGroup options={BUDGETS} value={draft.budget} onChange={(v) => set('budget', v)} format={humanize} />
         )}
-        <Button title="Save" onPress={save} loading={saving} />
+        {editing !== "measurements" && <Button title="Save" onPress={save} loading={saving} />}
       </BottomSheet>
     </Screen>
   );

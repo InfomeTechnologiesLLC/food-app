@@ -7,7 +7,7 @@ export type MealType = (typeof MEAL_TYPES)[number];
 
 const ingredientSchema = z.object({
   name: z.string().describe("Generic ingredient name, lowercase, singular"),
-  quantity: z.number().describe("Total amount needed for all servings"),
+  quantity: z.number().describe("Amount needed for one person"),
   unit: z.string(),
   fromPantry: z.boolean().describe("true if this comes from the user's pantry list or is a basic staple"),
 });
@@ -39,14 +39,14 @@ export interface PlanInput {
   days: number;
   mealTypes: MealType[];
   pantry: { name: string; quantity: number; unit: string; expiresInDays: number | null }[];
-  prefs: { diet: string; allergies: string[]; goal: string; budget: string; servings: number };
+  prefs: { diet: string; allergies: string[]; goal: string; budget: string; heightCm?: number | null; weightKg?: number | null };
   /** Max distinct ingredients the user is willing to buy. 0 = pantry only, null = no limit. */
   maxExtraItems: number | null;
 }
 
 const GOALS: Record<string, string> = {
   balanced: "balanced, varied nutrition",
-  weight_loss: "a moderate calorie deficit: high protein, high fibre, lighter portions",
+  weight_loss: "weight-conscious balanced meals: high protein, high fibre, satisfying portions",
   muscle_gain: "high protein with enough calories to support muscle gain",
   budget: "the lowest possible cost",
 };
@@ -76,8 +76,8 @@ ${pantryLines}
 USER PROFILE:
 - Diet: ${prefs.diet === "none" ? "no restriction" : prefs.diet}
 - Goal: ${GOALS[prefs.goal] ?? prefs.goal}
-- Budget: ${prefs.budget}
-- Servings per meal: ${prefs.servings} (ingredient quantities must cover all servings)
+${maxExtraItems === 0 ? "" : `- Budget: ${prefs.budget}\n`}- Every meal serves exactly one person. Ingredient quantities and nutrition must cover that one serving.
+${prefs.heightCm ? `- Height: ${prefs.heightCm} cm\n` : ""}${prefs.weightKg ? `- Current weight: ${prefs.weightKg} kg\n` : ""}
 
 RULES:
 1. Build meals around what's in the pantry. Use items that expire soonest in the earliest days.
@@ -87,7 +87,8 @@ RULES:
 5. Set fromPantry=true only for pantry items or staples. Everything else is fromPantry=false. Every ingredient a dish's title implies (e.g. garlic in "garlic chicken") must be listed.
 6. Realistic home cooking: weekday meals under 40 minutes, simple techniques.
 7. Number the days from 1 to ${days}.
-8. Estimate calories and nutrition from the complete recipe, including cooking oils and all other ingredients. Divide recipe totals by ${prefs.servings} to report kcal, proteinGrams, carbsGrams and fatGrams PER SERVING. Ingredient quantities must still cover all ${prefs.servings} servings.`;
+8. Estimate calories and nutrition from the complete recipe, including cooking oils and all other ingredients. Report kcal, proteinGrams, carbsGrams and fatGrams for the complete single-person serving.
+9. Height and weight, when provided, are context only. Do not infer health status or prescribe a calorie deficit, daily calorie target or target weight from them. Age and activity level are unknown; follow the stated goal with balanced meals and avoid extreme restriction.`;
 }
 
 function systemInstruction(allergies: string[]) {

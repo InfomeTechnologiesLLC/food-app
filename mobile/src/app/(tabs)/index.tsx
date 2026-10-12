@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { type Href, router } from 'expo-router';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { BmiCard } from '@/components/bmi-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { humanize } from '@/components/ui';
@@ -188,6 +189,8 @@ export default function HomeScreen() {
           <Ionicons style={{ alignSelf: 'flex-end' }} name="arrow-forward" size={22} color={theme.tint} />
         </View>
       </Pressable>
+
+      <BmiCard />
 
       {freshness.length > 0 && (
         <View style={{ marginTop: Spacing.two }}>

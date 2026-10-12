@@ -7,13 +7,15 @@ export interface Preferences {
   allergies: string[];
   goal: Goal;
   budget: Budget;
-  servings: number;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  weightUpdatedAt?: string | null;
 }
 
 export interface User {
   _id: string;
   email: string;
-  plan: 'free' | 'plus' | 'family';
+  plan: 'free' | 'plus';
   onboarded: boolean;
   preferences: Preferences;
   usage: { scansThisMonth: number; plansThisMonth: number };
@@ -65,7 +67,7 @@ export interface Meal {
   description: string;
   prepMinutes: number;
   calories: number;
-  /** Estimated grams per serving; ingredient quantities cover the whole recipe. */
+  /** Estimated grams for one person; ingredient quantities cover one serving. */
   nutrition: { proteinGrams: number; carbsGrams: number; fatGrams: number };
   /** `available` = in your pantry now, a basic staple, or ticked as bought on this plan's list */
   ingredients: { name: string; quantity: number; unit: string; fromPantry: boolean; available: boolean }[];

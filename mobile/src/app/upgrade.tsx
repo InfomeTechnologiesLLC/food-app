@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const TIERS: readonly {
-  id: 'free' | 'plus' | 'family';
+  id: 'free' | 'plus';
   name: string;
   tagline: string;
   icon: IconName;
@@ -33,15 +33,7 @@ const TIERS: readonly {
       { label: 'Unlimited scans', icon: 'scan-outline' },
       { label: 'Unlimited meal plans', icon: 'restaurant-outline' },
       { label: 'Expiry reminders', icon: 'time-outline' },
-      { label: 'Multiple diet profiles (soon)', icon: 'people-outline' },
-    ],
-  },
-  {
-    id: 'family', name: 'Family', tagline: 'One pantry for the whole household.', icon: 'home-outline',
-    features: [
-      { label: 'Everything in Plus', icon: 'sparkles-outline' },
-      { label: 'Shared pantry and shopping lists (soon)', icon: 'cart-outline' },
-      { label: 'Up to 6 household members (soon)', icon: 'person-add-outline' },
+      { label: 'Personal diet and allergy settings', icon: 'person-outline' },
     ],
   },
 ];

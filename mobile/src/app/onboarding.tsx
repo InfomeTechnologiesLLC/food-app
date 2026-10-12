@@ -14,7 +14,7 @@ export default function OnboardingScreen() {
     <Screen>
       <View style={{ gap: Spacing.one, paddingTop: Spacing.three }}>
         <ThemedText type="subtitle">Tell us how you eat</ThemedText>
-        <ThemedText themeColor="textSecondary">Every meal suggestion respects these. You can change them anytime.</ThemedText>
+        <ThemedText themeColor="textSecondary">Meal plans are for you, with one serving per meal. You can change these preferences anytime.</ThemedText>
       </View>
       <PreferencesForm initial={user.preferences} submitLabel="Continue" onSubmit={updatePreferences} />
     </Screen>

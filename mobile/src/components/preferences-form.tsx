@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { MeasurementInputs } from '@/components/measurements-form';
+import { parseMeasurements } from '@/lib/measurements';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Chip, ChipGroup, Input, Section, humanize } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -9,7 +11,6 @@ import type { Budget, Diet, Goal, Preferences } from '@/lib/types';
 export const DIETS: Diet[] = ['none', 'vegetarian', 'vegan', 'pescatarian', 'keto', 'halal', 'kosher'];
 export const GOALS: Goal[] = ['balanced', 'weight_loss', 'muscle_gain', 'budget'];
 export const BUDGETS: Budget[] = ['low', 'medium', 'high'];
-export const SERVINGS = [1, 2, 3, 4, 5, 6] as const;
 export const COMMON_ALLERGIES = ['peanuts', 'tree nuts', 'milk', 'eggs', 'gluten', 'soy', 'fish', 'shellfish', 'sesame'];
 
 export function PreferencesForm({
@@ -20,6 +21,8 @@ export function PreferencesForm({
   onSubmit: (prefs: Preferences) => Promise<void>;
 }) {
   const [prefs, setPrefs] = useState(initial);
+  const [height, setHeight] = useState(initial.heightCm?.toString() ?? "");
+  const [weight, setWeight] = useState(initial.weightKg?.toString() ?? "");
   const [customAllergy, setCustomAllergy] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +42,7 @@ export function PreferencesForm({
     setSaving(true);
     setError(null);
     try {
-      await onSubmit(prefs);
+      await onSubmit({ ...prefs, ...parseMeasurements(height, weight) });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -78,13 +81,9 @@ export function PreferencesForm({
         <ChipGroup options={BUDGETS} value={prefs.budget} onChange={(v) => set('budget', v)} format={humanize} />
       </Section>
 
-      <Section title="Cooking for">
-        <ChipGroup
-          options={SERVINGS}
-          value={prefs.servings as (typeof SERVINGS)[number]}
-          onChange={(v) => set('servings', v)}
-          format={(n) => (n === 1 ? '1 person' : `${n} people`)}
-        />
+      <Section title="Body measurements (optional)">
+        <ThemedText type="small" themeColor="textSecondary">Add these to see your BMI and give your AI meal planner more context. Leave them blank to skip.</ThemedText>
+        <MeasurementInputs height={height} weight={weight} onHeightChange={setHeight} onWeightChange={setWeight} />
       </Section>
 
       {error && <ThemedText themeColor="danger">{error}</ThemedText>}

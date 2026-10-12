@@ -42,6 +42,9 @@ export async function refundUsage(userId: string, counter: Counter) {
 /** User as the app sees it: no password hash, usage reset if it's from an old month, plus the plan's limits. */
 export function toPublicUser(user: { toObject: () => any }) {
   const { passwordHash, ...u } = user.toObject();
+  // Older accounts may still contain a multi-person preference. Never expose it.
+  if (u.preferences) delete u.preferences.servings;
+  if (u.plan === "family") u.plan = "plus";
   const stale = u.usage?.period !== currentPeriod();
   const limits = LIMITS[u.plan] ?? LIMITS.free;
   return {
