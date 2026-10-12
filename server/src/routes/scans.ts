@@ -27,11 +27,7 @@ function imageMime(file: { mimetype: string; originalname: string }) {
 }
 
 router.post("/", upload.single("image"), async (req: AuthRequest, res) => {
-  // "fridge" is the old name for "groceries"; still accepted from older app builds
-  const type = z
-    .enum(["groceries", "fridge", "receipt"])
-    .transform((t) => (t === "fridge" ? "groceries" : t))
-    .safeParse(req.body.type);
+  const type = z.enum(["groceries", "receipt"]).safeParse(req.body.type);
   if (!type.success) return res.status(400).json({ error: "type must be 'groceries' or 'receipt'" });
   if (!req.file) return res.status(400).json({ error: "Please attach a JPEG, PNG or WebP image under 8 MB." });
 

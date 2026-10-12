@@ -107,7 +107,7 @@ export async function restoreIngredients(userId: string, consumed: Consumed[]) {
         unit: c.unit,
         category: (c.category ?? undefined) as (typeof PANTRY_CATEGORIES)[number] | undefined,
         expiryDate: c.expiryDate ?? undefined,
-        source: (c.source ?? undefined) as "groceries" | "receipt" | "manual" | "fridge" | undefined,
+        source: (c.source ?? undefined) as "groceries" | "receipt" | "manual" | undefined,
       });
     }
   }

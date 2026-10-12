@@ -8,7 +8,6 @@ import meRoutes from "./routes/me.js";
 import pantryRoutes from "./routes/pantry.js";
 import scanRoutes from "./routes/scans.js";
 import planRoutes from "./routes/plans.js";
-import { MealPlan } from "./models/MealPlan.js";
 
 const app = express();
 app.set("trust proxy", 1); // behind Render/Railway's proxy, so rate limiting sees real client IPs
@@ -38,14 +37,4 @@ app.use(errorHandler);
 
 await mongoose.connect(env.MONGODB_URI);
 
-// Plans from before drafts existed: each user's newest one becomes their current plan, the rest drafts
-const legacy = await MealPlan.find({ status: { $exists: false } }).sort({ createdAt: -1 }).select("userId").lean();
-if (legacy.length) {
-  const newest = new Map<string, unknown>();
-  for (const p of legacy) if (!newest.has(String(p.userId))) newest.set(String(p.userId), p._id);
-  await MealPlan.updateMany({ status: { $exists: false } }, { $set: { status: "draft" } });
-  for (const [userId, id] of newest) {
-    if (!(await MealPlan.exists({ userId, status: "active" }))) await MealPlan.updateOne({ _id: id }, { $set: { status: "active" } });
-  }
-}
 app.listen(env.PORT, "0.0.0.0", () => console.log(`API on :${env.PORT}`));

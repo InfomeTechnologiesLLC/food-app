@@ -10,7 +10,7 @@ const pantryItemSchema = new Schema(
     unit: { type: String, default: "pcs" },
     category: { type: String, enum: PANTRY_CATEGORIES, default: "other" },
     expiryDate: { type: Date },
-    source: { type: String, enum: ["groceries", "receipt", "manual", "fridge"], default: "manual" },
+    source: { type: String, enum: ["groceries", "receipt", "manual"], default: "manual" },
   },
   { timestamps: true }
 );

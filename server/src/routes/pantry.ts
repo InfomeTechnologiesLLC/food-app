@@ -15,7 +15,7 @@ const itemSchema = z.object({
   unit: z.string().trim().max(20).optional(),
   category: z.enum(PANTRY_CATEGORIES).optional(),
   expiryDate: z.coerce.date().nullable().optional(),
-  source: z.enum(["groceries", "receipt", "manual", "fridge"]).optional(),
+  source: z.enum(["groceries", "receipt", "manual"]).optional(),
 });
 
 router.get("/", async (req: AuthRequest, res) => {

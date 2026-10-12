@@ -34,7 +34,7 @@ export interface PantryItem {
   unit: string;
   category: Category;
   expiryDate?: string | null;
-  source: 'groceries' | 'receipt' | 'manual' | 'fridge';
+  source: 'groceries' | 'receipt' | 'manual';
 }
 
 export type PantryInput = Omit<PantryItem, '_id' | 'source'> & { source?: PantryItem['source'] };
