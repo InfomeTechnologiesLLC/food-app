@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { daysUntil, usePantry } from '@/lib/pantry';
 import { activePlan, planDayDate, today, usePlans } from '@/lib/plans';
 import type { PantryItem } from '@/lib/types';
+import { formatQty } from '@/lib/quantities';
 import { remaining } from '@/lib/usage';
 
 const plural = (n: number, word: string) => `${word}${n === 1 ? '' : 's'}`;
@@ -65,7 +66,7 @@ function FreshRow({ item, last }: { item: PantryItem; last: boolean }) {
       <View style={{ flex: 1, gap: 2 }}>
         <ThemedText style={{ fontWeight: 600 }}>{item.name}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>
-          {item.quantity} {item.unit} · {humanize(item.category)}
+          {formatQty(item.quantity, item.unit)} · {humanize(item.category)}
         </ThemedText>
       </View>
       <View style={[styles.pill, { backgroundColor: `${color}22` }]}>

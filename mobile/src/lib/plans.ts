@@ -109,7 +109,7 @@ export function useToggleShoppingItem(planId: string) {
   });
 }
 
-export const formatQty = (q: number, unit: string) => `${Number.isInteger(q) ? q : q.toFixed(2).replace(/\.?0+$/, '')} ${unit}`;
+export { formatQty } from '@/lib/quantities';
 
 export const SHOPPING_OPTIONS = [0, 3, 5, 10, null] as const;
 export type ShoppingOption = (typeof SHOPPING_OPTIONS)[number];

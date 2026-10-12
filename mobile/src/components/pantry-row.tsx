@@ -6,6 +6,7 @@ import { humanize } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { expiryLabel } from '@/lib/pantry';
+import { formatQty } from '@/lib/quantities';
 import type { PantryItem } from '@/lib/types';
 
 export function PantryRow({ item }: { item: PantryItem }) {
@@ -21,7 +22,7 @@ export function PantryRow({ item }: { item: PantryItem }) {
       <View style={{ flex: 1, gap: Spacing.one }}>
         <ThemedText style={{ fontWeight: 700 }} numberOfLines={1}>{item.name}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12, lineHeight: 16 }}>
-          {item.quantity} {item.unit} · {humanize(item.category)}
+          {formatQty(item.quantity, item.unit)} · {humanize(item.category)}
         </ThemedText>
       </View>
       {/* Tinted pill: color carries urgency, background is the same hue at low alpha */}

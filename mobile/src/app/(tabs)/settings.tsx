@@ -116,7 +116,12 @@ export default function SettingsScreen() {
         ) : (
           <ThemedText type="small" themeColor="textSecondary">{humanize(user.plan)} plan</ThemedText>
         )}
-        <Pressable onPress={signOut} hitSlop={8}>
+        <Pressable
+          onPress={() => showAlert('Log out?', 'Are you sure you want to log out?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Log out', style: 'destructive', onPress: () => void signOut() },
+          ])}
+          hitSlop={8}>
           <ThemedText style={{ color: theme.danger, fontWeight: 700 }}>Log out</ThemedText>
         </Pressable>
       </View>
