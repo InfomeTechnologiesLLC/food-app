@@ -65,6 +65,8 @@ export interface Meal {
   description: string;
   prepMinutes: number;
   calories: number;
+  /** Estimated grams per serving; ingredient quantities cover the whole recipe. */
+  nutrition: { proteinGrams: number; carbsGrams: number; fatGrams: number };
   /** `available` = in your pantry now, a basic staple, or ticked as bought on this plan's list */
   ingredients: { name: string; quantity: number; unit: string; fromPantry: boolean; available: boolean }[];
   steps: string[];

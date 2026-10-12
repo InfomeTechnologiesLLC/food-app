@@ -20,13 +20,23 @@ const consumedSchema = new Schema(
   { _id: false }
 );
 
+const nutritionSchema = new Schema(
+  {
+    proteinGrams: { type: Number, required: true, min: 0, validate: Number.isFinite },
+    carbsGrams: { type: Number, required: true, min: 0, validate: Number.isFinite },
+    fatGrams: { type: Number, required: true, min: 0, validate: Number.isFinite },
+  },
+  { _id: false }
+);
+
 const mealSchema = new Schema(
   {
     type: { type: String, enum: ["breakfast", "lunch", "dinner", "snack"] },
     title: String,
     description: String,
     prepMinutes: Number,
-    calories: Number,
+    calories: { type: Number, required: true, min: 0, validate: Number.isInteger },
+    nutrition: { type: nutritionSchema, required: true },
     ingredients: [ingredientSchema],
     steps: [String],
     allergyWarnings: { type: [String], default: [] },

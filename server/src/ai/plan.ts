@@ -17,7 +17,12 @@ const mealSchema = z.object({
   title: z.string(),
   description: z.string().describe("One appetizing sentence"),
   prepMinutes: z.number().int(),
-  calories: z.number().int().describe("Approximate kcal per serving"),
+  calories: z.number().int().nonnegative().describe("Approximate kcal per serving"),
+  nutrition: z.object({
+    proteinGrams: z.number().nonnegative().describe("Approximate protein in grams per serving"),
+    carbsGrams: z.number().nonnegative().describe("Approximate carbohydrates in grams per serving"),
+    fatGrams: z.number().nonnegative().describe("Approximate fat in grams per serving"),
+  }),
   ingredients: z.array(ingredientSchema),
   steps: z.array(z.string()).describe("3 to 7 short cooking steps"),
 });
@@ -81,7 +86,8 @@ RULES:
 4. Assume these staples are always available and mark them fromPantry=true: ${STAPLES.join(", ")}.
 5. Set fromPantry=true only for pantry items or staples. Everything else is fromPantry=false. Every ingredient a dish's title implies (e.g. garlic in "garlic chicken") must be listed.
 6. Realistic home cooking: weekday meals under 40 minutes, simple techniques.
-7. Number the days from 1 to ${days}.`;
+7. Number the days from 1 to ${days}.
+8. Estimate calories and nutrition from the complete recipe, including cooking oils and all other ingredients. Divide recipe totals by ${prefs.servings} to report kcal, proteinGrams, carbsGrams and fatGrams PER SERVING. Ingredient quantities must still cover all ${prefs.servings} servings.`;
 }
 
 function systemInstruction(allergies: string[]) {

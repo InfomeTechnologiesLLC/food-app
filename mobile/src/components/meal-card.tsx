@@ -26,7 +26,7 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
           <ThemedText type="small" themeColor="tint">{humanize(meal.type).toUpperCase()}</ThemedText>
           <ThemedText type="smallBold" style={{ fontSize: 16 }}>{meal.title}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {meal.prepMinutes} min · ~{meal.calories} kcal
+            {meal.prepMinutes} min · ~{meal.calories.toFixed(0)} kcal per serving
           </ThemedText>
         </View>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={theme.textSecondary} />
@@ -43,6 +43,20 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
       {open && (
         <View style={{ gap: Spacing.three }}>
           <ThemedText type="small" themeColor="textSecondary">{meal.description}</ThemedText>
+          <View style={{ gap: 4 }}>
+            <ThemedText type="smallBold">Estimated nutrition per serving</ThemedText>
+            {[
+              ['Calories', `${meal.calories.toFixed(0)} kcal`],
+              ['Protein', `${meal.nutrition.proteinGrams.toFixed(1)} g`],
+              ['Carbohydrates', `${meal.nutrition.carbsGrams.toFixed(1)} g`],
+              ['Fat', `${meal.nutrition.fatGrams.toFixed(1)} g`],
+            ].map(([label, value]) => (
+              <View key={label} style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.two }}>
+                <ThemedText type="small" themeColor="textSecondary">{label}</ThemedText>
+                <ThemedText type="small">{value}</ThemedText>
+              </View>
+            ))}
+          </View>
           <View style={{ gap: 4 }}>
             <ThemedText type="smallBold">Ingredients</ThemedText>
             {meal.ingredients.map((i, idx) => (
