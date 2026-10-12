@@ -47,14 +47,21 @@ const ALLERGEN_TERMS: Record<string, string[]> = {
   sesame: ["sesame", "tahini", "til"],
 };
 
-// Ingredients that look like allergens by name but aren't.
-const FALSE_POSITIVES = ["coconut milk", "almond milk", "oat milk", "soy milk", "rice milk", "cream of tartar", "butternut", "peanut free", "nutmeg", "eggplant", "buckwheat", "gluten free"];
+// Exceptions apply only to the named allergy; plant milks still contain their source allergens.
+const FALSE_POSITIVES: Record<string, string[]> = {
+  milk: ["coconut milk", "almond milk", "oat milk", "soy milk", "rice milk", "cream of tartar"],
+  "tree nuts": ["butternut", "nutmeg"],
+  peanuts: ["peanut free"],
+  eggs: ["eggplant"],
+  gluten: ["buckwheat", "gluten free"],
+};
 
 /** Returns the allergies (from the user's list) that this text appears to contain. */
 export function findAllergens(text: string, allergies: string[]): string[] {
-  let hay = ` ${normalize(text)} `;
-  for (const fp of FALSE_POSITIVES) hay = hay.replaceAll(` ${normalize(fp)} `, " ");
+  const normalizedText = ` ${normalize(text)} `;
   return allergies.filter((allergy) => {
+    let hay = normalizedText;
+    for (const fp of FALSE_POSITIVES[allergy] ?? []) hay = hay.replaceAll(` ${normalize(fp)} `, " ");
     const terms = ALLERGEN_TERMS[allergy] ?? [allergy];
     return terms.some((t) => hay.includes(` ${normalize(t)} `));
   });
