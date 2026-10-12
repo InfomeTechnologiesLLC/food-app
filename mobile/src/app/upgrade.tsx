@@ -55,7 +55,7 @@ export default function UpgradeScreen() {
 
   return (
     <Screen scroll={false} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <ThemedView type="backgroundElement" style={styles.segmented}>
           {TIERS.map((t) => {
             const selected = t.id === selectedId;
