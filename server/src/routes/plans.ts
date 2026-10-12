@@ -4,6 +4,7 @@ import { isValidObjectId } from "mongoose";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { generatePlan, MEAL_TYPES } from "../ai/plan.js";
 import { AIError } from "../ai/gemini.js";
+import { stockShoppingItem } from "../lib/stock-shopping.js";
 import { buildShoppingList } from "../lib/shopping.js";
 import { normalize } from "../lib/ingredients.js";
 import { convert } from "../lib/units.js";
@@ -39,15 +40,16 @@ const findPlan = (id: string, userId: string) =>
 
 type PlanDoc = NonNullable<Awaited<ReturnType<typeof MealPlan.findOne>>>;
 
-/** Rebuilds the shopping list for meals not made yet, keeping ticks on items that are still needed. */
+/** Rebuilds remaining purchases from pantry stock; stocked rows cannot represent new purchases. */
 async function refreshShoppingList(plan: PlanDoc, userId: string) {
   const pantry = await pantryFor(userId);
   const key = (i: { name?: string | null; unit?: string | null }) => `${normalize(i.name ?? "")}|${(i.unit ?? "").toLowerCase()}`;
   const previous = new Map(plan.shoppingList.map((i) => [key(i), i]));
   const meals = plan.days.flatMap((d) => d.meals).filter((m) => !m.made) as any[];
   plan.set("shoppingList", buildShoppingList(meals, pantry).map((i) => {
-    const old = previous.get(key(i));
-    return { ...i, ...(old ? { _id: old._id } : {}), checked: Boolean(old?.checked && (old.quantity ?? 0) >= i.quantity) };
+    const previousItem = previous.get(key(i));
+    const old = previousItem?.stocked ? undefined : previousItem;
+    return { ...i, ...(old ? { _id: old._id } : {}), checked: false };
   }));
 }
 
@@ -157,11 +159,17 @@ router.patch("/:id/shopping/:itemId", async (req: AuthRequest, res) => {
   if (!checked.success || !isValidObjectId(req.params.id) || !isValidObjectId(req.params.itemId)) {
     return res.status(400).json({ error: "Invalid request" });
   }
-  const result = await MealPlan.updateOne(
-    { _id: req.params.id, userId: req.userId, "shoppingList._id": req.params.itemId },
-    { $set: { "shoppingList.$.checked": checked.data.checked } }
+  const plan = await findPlan(req.params.id as string, req.userId!);
+  const item = plan?.shoppingList.id(req.params.itemId as string);
+  if (!plan || !item) return res.status(404).json({ error: "Item not found" });
+  if (checked.data.checked && !item.stocked) {
+    await stockShoppingItem(req.userId!, item);
+  }
+  await MealPlan.updateOne(
+    { _id: plan._id, userId: req.userId, "shoppingList._id": item._id },
+    { $set: { "shoppingList.$.checked": checked.data.checked,
+      ...(checked.data.checked ? { "shoppingList.$.stocked": true } : {}) } }
   );
-  if (!result.matchedCount) return res.status(404).json({ error: "Item not found" });
   res.status(204).end();
 });
 

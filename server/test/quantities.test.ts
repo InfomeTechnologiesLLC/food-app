@@ -34,9 +34,9 @@ test("duplicate ingredients within a meal cannot reuse stock", () => {
   assert.equal(result.readyMeals, 0);
   assert.deepEqual(result.days[0]!.meals[0]!.ingredients.map((i) => i.available), [true, false]);
 });
-test("checked shopping quantities top up stock, unchecked ones do not", () => {
+test("shopping checkmarks do not substitute for pantry stock", () => {
   const rice = item("rice", 200);
-  assert.equal(readiness([rice], [item("rice", 50)], [{ ...item("rice", 150), checked: true }]).readyMeals, 1);
+  assert.equal(readiness([rice], [item("rice", 50)], [{ ...item("rice", 150), checked: true }]).readyMeals, 0);
   assert.equal(readiness([rice], [], [{ ...item("rice", 150), checked: true }]).readyMeals, 0);
   assert.equal(readiness([rice], [item("rice", 50)], [{ ...item("rice", 150), checked: false }]).readyMeals, 0);
 });

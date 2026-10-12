@@ -52,6 +52,7 @@ const shoppingItemSchema = new Schema({
   quantity: Number,
   unit: String,
   checked: { type: Boolean, default: false },
+  stocked: { type: Boolean, default: false },
 });
 
 const mealPlanSchema = new Schema(

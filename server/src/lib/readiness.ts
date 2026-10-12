@@ -6,12 +6,11 @@ interface PlanLike {
 }
 
 /**
- * Marks each ingredient as available when pantry stock plus checked shopping quantities
- * cover the meal (staples are assumed available). Computed when the plan
- * is read, so a meal becomes "ready to cook" as soon as the user stocks up.
+ * Marks each ingredient as available when actual pantry stock covers the meal
+ * (staples are assumed available). Shopping checkmarks are not stock.
  */
 export function annotateReadiness<T extends PlanLike>(plan: T, pantry: StockItem[]) {
-  const have = [...pantry, ...plan.shoppingList.filter((i) => i.checked)];
+  const have = pantry;
   let readyMeals = 0;
   let totalMeals = 0;
 

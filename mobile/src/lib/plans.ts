@@ -105,7 +105,10 @@ export function useToggleShoppingItem(planId: string) {
       return { previous };
     },
     onError: (_e, _v, ctx) => ctx?.previous && qc.setQueryData(key, ctx.previous),
-    onSettled: () => qc.invalidateQueries({ queryKey: ['plans'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['plans'] });
+      qc.invalidateQueries({ queryKey: ['pantry'] });
+    },
   });
 }
 
