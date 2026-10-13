@@ -11,6 +11,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { daysUntil, usePantry } from '@/lib/pantry';
 import { activePlan, usePlan, usePlans } from '@/lib/plans';
+import { useCalendarDate } from '@/hooks/use-calendar-date';
+import { useDailyHistory } from '@/lib/history';
 import { remaining } from '@/lib/usage';
 
 const plural = (n: number, word: string) => `${word}${n === 1 ? '' : 's'}`;
@@ -38,13 +40,16 @@ function StatTile({ value, label, icon, iconColor, href }: {
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const date = useCalendarDate();
   const { user } = useAuth();
   const { data: items = [], isLoading, refetch, isRefetching } = usePantry();
   const { data: plans = [], refetch: refetchPlans, isLoading: plansLoading, error: plansError, isRefetching: plansRefetching } = usePlans();
+  const history = useDailyHistory(date);
   const latest = activePlan(plans);
   const { data: currentPlan, isLoading: planLoading, error: planError, refetch: refetchPlan, isRefetching: planRefetching } = usePlan(latest?._id);
   const refresh = () => {
     refetch();
+    history.refetch();
     refetchPlans();
     if (latest) refetchPlan();
   };
@@ -55,7 +60,7 @@ export default function HomeScreen() {
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching || plansRefetching || planRefetching} onRefresh={refresh} />}>
+    <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching || plansRefetching || planRefetching || history.isRefetching} onRefresh={refresh} />}>
       <View style={{ gap: Spacing.one, paddingTop: Spacing.two }}>
         <ThemedText type="small" themeColor="textSecondary">{dateLabel}</ThemedText>
         <ThemedText type="subtitle">
@@ -147,9 +152,11 @@ export default function HomeScreen() {
       </Pressable>
 
       <DailyProgressCard
+        date={date}
         plan={currentPlan}
-        loading={plansLoading || planLoading}
-        error={plansError ?? planError}
+        history={history.data?.totals[date]}
+        loading={plansLoading || planLoading || history.isLoading}
+        error={plansError ?? planError ?? history.error}
         onRetry={refresh}
       />
     </Screen>

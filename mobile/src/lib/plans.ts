@@ -22,68 +22,61 @@ export function useGeneratePlan() {
   });
 }
 
-/** Local midnight today, so the server numbers plan days by the user's calendar. */
-export const today = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
-
-/** Calendar date of a plan day (day 1 = start date). */
+export const timezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+export const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+export const today = () => localDate();
+export const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 export function planDayDate(startDate: string, day: number) {
-  const d = new Date(startDate);
-  d.setHours(0, 0, 0, 0);
+  const d = new Date(`${startDate}T12:00:00`);
   d.setDate(d.getDate() + day - 1);
   return d;
 }
-
-export const isUpcoming = (startDate: string, day: number) => planDayDate(startDate, day) > today();
-
-export const dayLabel = (startDate: string | undefined, day: number) =>
-  startDate
-    ? `Day ${day} · ${planDayDate(startDate, day).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`
-    : `Day ${day}`;
+export const dayLabel = (date: string | undefined, day: number) => date ? `Day ${day} · ${dateLabel(date)}` : `Day ${day}`;
+export interface PlanTarget { activeId: string | null; revision: number | null }
+export const planTarget = (plan?: MealPlan | MealPlanSummary): PlanTarget => ({ activeId: plan?._id ?? null, revision: plan?.__v ?? null });
 
 /** Changes to the current plan: they return it, and can change the pantry and the plans list. */
 function usePlanChange<V>(fn: (vars: V) => Promise<MealPlan>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
-    onSuccess: (plan) => {
-      qc.setQueryData(['plans', plan._id], plan);
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['plans'] });
       qc.invalidateQueries({ queryKey: ['pantry'] });
+      qc.invalidateQueries({ queryKey: ['food-history'] });
+    },
+    onSuccess: (plan) => {
+      qc.setQueryData(['plans', plan._id], plan);
     },
   });
 }
 
-/** Makes a draft the current plan, replacing the existing one. */
 export const useActivatePlan = () =>
-  usePlanChange((id: string) => api<MealPlan>(`/plans/${id}/activate`, { method: 'POST', body: { today: today() } }));
-
-/** Adds the chosen days of a draft to the end of the current plan. */
+  usePlanChange(({ id, target }: { id: string; target: PlanTarget }) => api<MealPlan>(`/plans/${id}/activate`, { method: 'POST', body: { ...target, timezone: timezone() } }));
 export const useMergePlan = () =>
-  usePlanChange(({ id, days }: { id: string; days: number[] }) =>
-    api<MealPlan>(`/plans/${id}/merge`, { method: 'POST', body: { days, today: today() } }));
-
-/** Swaps an upcoming day of the current plan for a day of a draft. */
+  usePlanChange(({ id, days, target }: { id: string; days: number[]; target: PlanTarget }) =>
+    api<MealPlan>(`/plans/${id}/merge`, { method: 'POST', body: { days, ...target, timezone: timezone() } }));
 export const useReplaceDay = () =>
-  usePlanChange(({ id, fromDay, toDay }: { id: string; fromDay: number; toDay: number }) =>
-    api<MealPlan>(`/plans/${id}/replace-day`, { method: 'POST', body: { fromDay, toDay, today: today() } }));
-
-/**
- * Marks a meal as made (takes its ingredients out of the pantry) or not made (puts them back).
- * Fails with code SHORTAGE (error.data.shortages) when the pantry is short and confirm isn't set.
- */
-export const useMarkMade = (planId: string) =>
-  usePlanChange((body: { day: number; index: number; made: boolean; confirm?: boolean }) =>
-    api<MealPlan>(`/plans/${planId}/meals/made`, { method: 'POST', body }));
+  usePlanChange(({ id, fromDay, toDay, target }: { id: string; fromDay: number; toDay: number; target: PlanTarget }) =>
+    api<MealPlan>(`/plans/${id}/replace-day`, { method: 'POST', body: { fromDay, toDay, ...target, timezone: timezone() } }));
+export const useMarkEaten = (planId: string) =>
+  usePlanChange(async ({ mealId, historyEntryId, eaten, confirm, revision }: { mealId: string; historyEntryId: string | null; eaten: boolean; confirm?: boolean; revision: number }) => {
+    if (!eaten) {
+      await api<void>(`/food-history/${historyEntryId}/undo`, { method: 'POST' });
+      return api<MealPlan>(`/plans/${planId}`);
+    }
+    return api<MealPlan>(`/plans/${planId}/meals/${mealId}/eaten`, { method: 'POST', body: { confirm, revision, timezone: timezone() } });
+  });
 
 export function useDeletePlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api<void>(`/plans/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans'], exact: true }),
+    onSuccess: (_data, id) => {
+      qc.removeQueries({ queryKey: ['plans', id], exact: true });
+      qc.invalidateQueries({ queryKey: ['plans'] });
+      qc.invalidateQueries({ queryKey: ['food-history'] });
+    },
   });
 }
 
@@ -108,6 +101,7 @@ export function usePurchaseShoppingItem(planId: string) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['plans'] });
       qc.invalidateQueries({ queryKey: ['pantry'] });
+      qc.invalidateQueries({ queryKey: ['food-history'] });
     },
   });
 }

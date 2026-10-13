@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import { scheduleTransaction } from "./schedule.js";
 import { StockOperation } from "../models/StockOperation.js";
 import { MealPlan } from "../models/MealPlan.js";
 import { addStockInSession, StockConflict } from "./add-stock.js";
@@ -6,7 +6,7 @@ import { pantryStock } from "./pantry.js";
 import { shoppingRows } from "./shopping.js";
 
 export async function stockShoppingItem(userId: string, planId: string, itemId: string) {
-  return mongoose.connection.transaction(async (session) => {
+  return scheduleTransaction(userId, async (session) => {
     const key = `purchase:${planId}:${itemId}`;
     if (await StockOperation.exists({ userId, key }).session(session)) return true;
     const plan = await MealPlan.findOne({ _id: planId, userId }).session(session).lean();

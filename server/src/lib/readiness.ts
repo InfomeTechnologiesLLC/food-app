@@ -1,7 +1,7 @@
 import { stockAssessment, type StockItem } from "./stock.js";
 
 interface PlanLike {
-  days: { day: number; meals: { ingredients: StockItem[] }[] }[];
+  days: { day: number; meals: { ingredients: StockItem[]; eaten?: boolean }[] }[];
 }
 
 /**
@@ -23,8 +23,10 @@ export function annotateReadiness<T extends PlanLike>(plan: T, pantry: StockItem
         return { ...i, ...balance, available: balance.shortage === 0 };
       });
       const missing = ingredients.filter((i) => !i.available).map((i) => i.name);
-      totalMeals++;
-      if (missing.length === 0) readyMeals++;
+      if (!m.eaten) {
+        totalMeals++;
+        if (missing.length === 0) readyMeals++;
+      }
       return { ...m, ingredients, missing, readyToCook: missing.length === 0 };
     }),
   }));

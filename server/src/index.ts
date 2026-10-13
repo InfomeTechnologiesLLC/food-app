@@ -10,6 +10,9 @@ import scanRoutes from "./routes/scans.js";
 import { StockConflict } from "./lib/add-stock.js";
 import planRoutes from "./routes/plans.js";
 
+import historyRoutes from "./routes/history.js";
+import { ScheduleConflict } from "./lib/schedule.js";
+
 const app = express();
 app.set("trust proxy", 1); // behind Render/Railway's proxy, so rate limiting sees real client IPs
 app.disable("x-powered-by");
@@ -22,11 +25,13 @@ app.use("/me", meRoutes);
 app.use("/pantry", pantryRoutes);
 app.use("/scans", scanRoutes);
 app.use("/plans", planRoutes);
+app.use("/food-history", historyRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
 // Last-resort handler: never leak stack traces to the app
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof ScheduleConflict) return res.status(err.status).json({ error: err.message, code: "SCHEDULE_CONFLICT" });
   if (err instanceof StockConflict) return res.status(err.status).json({ error: err.message });
   if (err instanceof multer.MulterError) {
     return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "Image is too large (max 8 MB)." : err.message });

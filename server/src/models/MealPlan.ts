@@ -7,9 +7,9 @@ const ingredientSchema = new Schema(
   { _id: false }
 );
 
-// What marking a meal as made took from the pantry, so unmarking can put it back.
+// What marking a meal as eaten took from the pantry, so unmarking can put it back.
 // Batch metadata is domain history for undo, even after the batch is exhausted.
-const consumedSchema = new Schema(
+export const consumedSchema = new Schema(
   {
     ingredientKey: { type: String, required: true },
     batchId: { type: Types.ObjectId, required: true },
@@ -32,7 +32,7 @@ const nutritionSchema = new Schema(
   { _id: false }
 );
 
-const mealSchema = new Schema(
+export const mealSchema = new Schema(
   {
     type: { type: String, enum: ["breakfast", "lunch", "dinner", "snack"], required: true },
     title: { type: String, required: true },
@@ -43,11 +43,10 @@ const mealSchema = new Schema(
     ingredients: [ingredientSchema],
     steps: [String],
     allergyWarnings: { type: [String], default: [] },
-    made: { type: Boolean, default: false },
-    madeAt: Date,
-    consumed: { type: [consumedSchema], default: [] },
+    eaten: { type: Boolean, default: false },
+    historyEntryId: { type: Types.ObjectId, default: null },
   },
-  { _id: false }
+  { _id: true }
 );
 
 const mealPlanSchema = new Schema(
@@ -56,8 +55,8 @@ const mealPlanSchema = new Schema(
     title: { type: String, required: true },
     // draft = generated but not added yet; a user has at most one active plan
     status: { type: String, enum: ["draft", "active"], default: "draft", index: true },
-    startDate: Date,
-    days: [{ day: { type: Number, required: true, min: 1 }, meals: [mealSchema] }],
+    startDate: String,
+    days: [{ day: { type: Number, required: true, min: 1 }, date: String, meals: [mealSchema] }],
     settingsSnapshot: { type: new Schema({
       diet: { type: String, required: true },
       allergies: { type: [String], required: true },
@@ -72,6 +71,8 @@ const mealPlanSchema = new Schema(
   },
   { timestamps: true, optimisticConcurrency: true }
 );
+
+mealPlanSchema.index({ userId: 1, status: 1 }, { unique: true, partialFilterExpression: { status: "active" } });
 
 export const MealPlan = model("MealPlan", mealPlanSchema);
 

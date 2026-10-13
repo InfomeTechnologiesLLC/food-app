@@ -75,6 +75,7 @@ export const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 export type MealType = (typeof MEAL_TYPES)[number];
 
 export interface Meal {
+  _id: string;
   type: MealType;
   title: string;
   description: string;
@@ -88,11 +89,11 @@ export interface Meal {
   allergyWarnings: string[];
   missing: string[];
   readyToCook: boolean;
-  made: boolean;
-  madeAt?: string;
+  eaten: boolean;
+  historyEntryId: string | null;
 }
 
-/** An ingredient the pantry can't fully cover when marking a meal as made. */
+/** An ingredient the pantry can't fully cover when marking a meal as eaten. */
 export interface Shortage {
   name: string;
   quantity: number;
@@ -119,7 +120,8 @@ export interface MealPlan {
   status: PlanStatus;
   startDate?: string;
   createdAt: string;
-  days: { day: number; meals: Meal[] }[];
+  __v: number;
+  days: { day: number; date?: string; meals: Meal[] }[];
   shoppingList: ShoppingItem[];
   readyMeals: number;
   totalMeals: number;
@@ -127,6 +129,7 @@ export interface MealPlan {
 }
 
 export interface MealPlanSummary {
+  __v: number;
   _id: string;
   title: string;
   status: PlanStatus;
@@ -137,4 +140,28 @@ export interface MealPlanSummary {
   maxExtraItems: number | null;
   readyMeals: number;
   totalMeals: number;
+}
+
+export interface NutritionTotals {
+  meals: number;
+  calories: number;
+  proteinGrams: number;
+  carbsGrams: number;
+  fatGrams: number;
+}
+export interface FoodHistoryEntry {
+  _id: string;
+  mealId: string;
+  sourcePlanId: string;
+  sourcePlanTitle: string;
+  date: string;
+  recordedAt: string;
+  meal: Omit<Meal, 'ingredients' | 'missing' | 'readyToCook'> & {
+    ingredients: { name: string; quantity: number; unit: string; fromPantry: boolean }[];
+  };
+}
+export interface FoodHistoryPage {
+  entries: FoodHistoryEntry[];
+  totals: Record<string, NutritionTotals>;
+  nextCursor: string | null;
 }

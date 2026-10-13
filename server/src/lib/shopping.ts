@@ -3,11 +3,11 @@ import { normalize } from "./ingredients.js";
 import { stockBalance, type StockItem } from "./stock.js";
 import { convert } from "./units.js";
 
-/** Remaining quantities to buy across all unmade meals, using each pantry amount once. */
-export function buildShoppingList(meals: { ingredients: StockItem[]; made?: boolean }[], pantry: StockItem[]) {
+/** Remaining quantities to buy across all uneaten meals, using each pantry amount once. */
+export function buildShoppingList(meals: { ingredients: StockItem[]; eaten?: boolean }[], pantry: StockItem[]) {
   const shortage = stockBalance(pantry);
   const list: StockItem[] = [];
-  for (const ing of meals.filter((meal) => !meal.made).flatMap((meal) => meal.ingredients)) {
+  for (const ing of meals.filter((meal) => !meal.eaten).flatMap((meal) => meal.ingredients)) {
     const quantity = shortage(ing);
     if (!quantity) continue;
     const existing = list.find((item) => normalize(item.name) === normalize(ing.name) && convert(quantity, ing.unit, item.unit) != null);
@@ -19,7 +19,7 @@ export function buildShoppingList(meals: { ingredients: StockItem[]; made?: bool
 }
 
 /** Outstanding requirements are derived data; purchase receipts live in StockOperation. */
-export function shoppingRows(planId: string, revision: string, meals: { ingredients: StockItem[]; made?: boolean }[], pantry: StockItem[]) {
+export function shoppingRows(planId: string, revision: string, meals: { ingredients: StockItem[]; eaten?: boolean }[], pantry: StockItem[]) {
   return buildShoppingList(meals, pantry).map((item) => ({ ...item, _id: createHash("sha256")
     .update(JSON.stringify([planId, revision, normalize(item.name), item.unit, item.quantity]))
     .digest("hex").slice(0, 24) }));

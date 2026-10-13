@@ -6,14 +6,18 @@ import { generatePlan, MEAL_TYPES } from "../ai/plan.js";
 import { AIError } from "../ai/gemini.js";
 import { stockShoppingItem } from "../lib/stock-shopping.js";
 import { buildShoppingList, shoppingRows } from "../lib/shopping.js";
-import { consumeIngredients, PantryShortage, restoreIngredients } from "../lib/consume.js";
+import { consumeIngredients, PantryShortage } from "../lib/consume.js";
 import { annotateReadiness } from "../lib/readiness.js";
 import { consumeUsage, refundUsage } from "../lib/usage.js";
-import { MealPlan, type PlanData } from "../models/MealPlan.js";
+import { MealPlan, type PlanData, mealSchema } from "../models/MealPlan.js";
 import { PantryIngredient } from "../models/PantryIngredient.js";
 import { pantryStock, readPantry } from "../lib/pantry.js";
 import { StockOperation } from "../models/StockOperation.js";
 import { User } from "../models/User.js";
+
+import { calendarToday, addDays, timezoneSchema } from "../lib/calendar.js";
+import { scheduleTransaction, ScheduleConflict } from "../lib/schedule.js";
+import { FoodHistory } from "../models/FoodHistory.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -26,16 +30,6 @@ const generateSchema = z.object({
 });
 
 const pantryFor = pantryStock;
-
-// The app sends its local midnight so day numbers line up with the user's calendar
-const todaySchema = z.coerce.date().optional();
-const DAY_MS = 86_400_000;
-
-/** Which day of the plan `today` is (1 = start date). */
-const dayIndex = (startDate: Date, today: Date) => Math.round((today.getTime() - startDate.getTime()) / DAY_MS) + 1;
-
-const findPlan = (id: string, userId: string) =>
-  isValidObjectId(id) ? MealPlan.findOne({ _id: id, userId }) : null;
 
 type PlanDoc = NonNullable<Awaited<ReturnType<typeof MealPlan.findOne>>>;
 
@@ -98,8 +92,7 @@ router.get("/", async (req: AuthRequest, res) => {
   const [plans, pantry] = await Promise.all([
     MealPlan.find({ userId: req.userId })
       .sort({ createdAt: -1 })
-      .limit(20)
-      .select("title status startDate createdAt days.day days.meals.ingredients days.meals.made settingsSnapshot.maxExtraItems")
+      .select("__v title status startDate createdAt days.day days.meals.ingredients days.meals.eaten settingsSnapshot.maxExtraItems")
       .lean(),
     pantryFor(req.userId!),
   ]);
@@ -109,6 +102,7 @@ router.get("/", async (req: AuthRequest, res) => {
       const shopping = buildShoppingList(p.days.flatMap((d) => d.meals), pantry);
       return {
         _id: p._id,
+        __v: p.__v,
         title: p.title,
         status: p.status,
         startDate: p.startDate,
@@ -140,94 +134,129 @@ router.post("/:id/purchases/:itemId", async (req: AuthRequest, res) => {
   res.status(204).end();
 });
 
-/** Makes a draft the user's plan, replacing the current one if there is one. */
+const targetSchema = z.object({
+  timezone: timezoneSchema,
+  activeId: z.string().nullable(),
+  revision: z.number().int().nullable(),
+});
+async function currentTarget(userId: string, target: z.infer<typeof targetSchema>, session: mongoose.ClientSession) {
+  const active = await MealPlan.findOne({ userId, status: "active" }).session(session);
+  if ((active ? String(active._id) : null) !== target.activeId || (active?.__v ?? null) !== target.revision) throw new ScheduleConflict();
+  return active;
+}
+type MealObject = mongoose.InferSchemaType<typeof mealSchema>;
+function recipeKey(meal: MealObject) {
+  return JSON.stringify({ type: meal.type, title: meal.title, description: meal.description, prepMinutes: meal.prepMinutes,
+    calories: meal.calories, nutrition: meal.nutrition, ingredients: meal.ingredients.map(({ name, quantity, unit, fromPantry }) => ({ name, quantity, unit, fromPantry })),
+    steps: meal.steps, allergyWarnings: meal.allergyWarnings });
+}
+const orderedMeals = <T extends { type: typeof MEAL_TYPES[number] }>(meals: T[]) => meals.sort((a, b) => MEAL_TYPES.indexOf(a.type) - MEAL_TYPES.indexOf(b.type));
+function freshMeals(meals: PlanDoc["days"][number]["meals"]) {
+  return meals.map((meal) => ({ ...meal.toObject(), _id: new mongoose.Types.ObjectId(), eaten: false, historyEntryId: null }));
+}
+
 router.post("/:id/activate", async (req: AuthRequest, res) => {
-  const today = todaySchema.safeParse(req.body?.today);
-  if (!today.success) return res.status(400).json({ error: "Invalid request" });
-  const plan = await findPlan(req.params.id as string, req.userId!);
-  if (!plan) return res.status(404).json({ error: "Plan not found" });
-  if (plan.status === "active") return respondWith(res, plan, req.userId!);
-
-  await MealPlan.deleteMany({ userId: req.userId, status: "active" });
-  plan.status = "active";
-  plan.startDate = today.data ?? new Date();
-  await plan.save();
-  respondWith(res, plan, req.userId!);
-});
-
-/** Adds the chosen days of a draft to the end of the current plan. */
-router.post("/:id/merge", async (req: AuthRequest, res) => {
-  const body = z.object({ days: z.array(z.number().int()).min(1), today: todaySchema }).safeParse(req.body);
-  if (!body.success) return res.status(400).json({ error: "Pick at least one day to add." });
-  const draft = await findPlan(req.params.id as string, req.userId!);
-  if (!draft || draft.status !== "draft") return res.status(404).json({ error: "Plan not found" });
-  const active = await MealPlan.findOne({ userId: req.userId, status: "active" });
-  if (!active) return res.status(409).json({ error: "You don't have a current plan to add to." });
-
-  const picked = draft.days.filter((d) => body.data.days.includes(d.day!)).sort((a, b) => a.day! - b.day!);
-  if (!picked.length) return res.status(400).json({ error: "Pick at least one day to add." });
-
-  // New days go right after the plan's last day, or start today if the plan has already ended
-  const lastDay = Math.max(0, ...active.days.map((d) => d.day!));
-  const todayDay = dayIndex(active.startDate!, body.data.today ?? new Date());
-  let next = Math.max(lastDay + 1, todayDay);
-  for (const d of picked) {
-    active.days.push({ day: next++, meals: d.toObject().meals.map((m: any) => ({ ...m, made: false, consumed: [] })) });
-  }
-  await active.save();
-  respondWith(res, active, req.userId!);
-});
-
-/** Swaps one upcoming day of the current plan for a day from a draft. */
-router.post("/:id/replace-day", async (req: AuthRequest, res) => {
-  const body = z.object({ fromDay: z.number().int(), toDay: z.number().int(), today: todaySchema }).safeParse(req.body);
+  const body = targetSchema.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: "Invalid request" });
-  const draft = await findPlan(req.params.id as string, req.userId!);
-  if (!draft || draft.status !== "draft") return res.status(404).json({ error: "Plan not found" });
-  const active = await MealPlan.findOne({ userId: req.userId, status: "active" });
-  if (!active) return res.status(409).json({ error: "You don't have a current plan." });
-
-  const from = draft.days.find((d) => d.day === body.data.fromDay);
-  const to = active.days.find((d) => d.day === body.data.toDay);
-  if (!from || !to) return res.status(404).json({ error: "Day not found" });
-  if (body.data.toDay <= dayIndex(active.startDate!, body.data.today ?? new Date())) {
-    return res.status(409).json({ error: "Only upcoming days can be replaced." });
-  }
-  if (to.meals.some((m) => m.made)) return res.status(409).json({ error: "That day has meals marked as made." });
-
-  to.set("meals", from.toObject().meals.map((m: any) => ({ ...m, made: false, consumed: [] })));
-  await active.save();
-  respondWith(res, active, req.userId!);
+  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
+  const plan = await scheduleTransaction(req.userId!, async (session) => {
+    const draft = await MealPlan.findOne({ _id: req.params.id, userId: req.userId }).session(session);
+    if (!draft) throw new ScheduleConflict("Plan not found", 404);
+    if (draft.status === "active") return draft;
+    const active = await currentTarget(req.userId!, body.data, session);
+    const today = calendarToday(body.data.timezone);
+    const entries = await FoodHistory.find({ userId: req.userId, date: today, reversed: false }).session(session).lean();
+    const protectedMeals = entries.map((entry) => ({ ...entry.meal!, _id: entry.mealId, eaten: true, historyEntryId: entry._id }));
+    const types = new Set(protectedMeals.map((meal) => meal.type));
+    draft.days.forEach((day) => {
+      day.date = addDays(today, day.day - 1);
+      const incoming = freshMeals(day.meals);
+      day.set("meals", orderedMeals(day.day === 1 ? [...protectedMeals, ...incoming.filter((meal) => !types.has(meal.type))] : incoming));
+    });
+    const signature = (days: PlanDoc["days"]) => JSON.stringify(days.map((day) => ({ date: day.date, meals: orderedMeals(day.meals.map((meal) => meal.toObject())).map(recipeKey) })));
+    if (active && signature(active.days) === signature(draft.days)) throw new ScheduleConflict("That replacement would not change any meals.");
+    if (active) await active.deleteOne({ session });
+    draft.status = "active";
+    draft.startDate = today;
+    await draft.save({ session });
+    return draft;
+  });
+  await respondWith(res, plan, req.userId!);
 });
 
-/**
- * Marks a meal of the current plan as made (its ingredients come out of the pantry) or not made
- * (they go back). If the pantry is short, nothing changes until the app resends with confirm: true.
- */
-router.post("/:id/meals/made", async (req: AuthRequest, res) => {
-  const body = z.object({ day: z.number().int(), index: z.number().int().min(0), made: z.boolean(), confirm: z.boolean().default(false) }).safeParse(req.body);
-  if (!body.success || !isValidObjectId(req.params.id)) return res.status(400).json({ error: "Invalid request" });
+router.post("/:id/merge", async (req: AuthRequest, res) => {
+  const body = targetSchema.extend({ days: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "Pick at least one day to add." });
+  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
+  const active = await scheduleTransaction(req.userId!, async (session) => {
+    const draft = await MealPlan.findOne({ _id: req.params.id, userId: req.userId, status: "draft" }).session(session);
+    if (!draft) throw new ScheduleConflict("Draft not found", 404);
+    const active = await currentTarget(req.userId!, body.data, session);
+    if (!active) throw new ScheduleConflict("You don't have a current plan.");
+    const picked = draft.days.filter((day) => body.data.days.includes(day.day)).sort((a, b) => a.day - b.day);
+    if (picked.length !== new Set(body.data.days).size) throw new ScheduleConflict("Day not found", 404);
+    const last = active.days.reduce((a, b) => a.day > b.day ? a : b);
+    const today = calendarToday(body.data.timezone);
+    let date = addDays(last.date!, 1);
+    if (date < today) date = today;
+    let next = Math.round((new Date(date).getTime() - new Date(active.startDate!).getTime()) / 86400000) + 1;
+    for (const day of picked) {
+      active.days.push({ day: next++, date, meals: freshMeals(day.meals) });
+      date = addDays(date, 1);
+    }
+    await active.save({ session });
+    return active;
+  });
+  await respondWith(res, active, req.userId!);
+});
+
+router.post("/:id/replace-day", async (req: AuthRequest, res) => {
+  const body = targetSchema.extend({ fromDay: z.number().int(), toDay: z.number().int() }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "Invalid request" });
+  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
+  const active = await scheduleTransaction(req.userId!, async (session) => {
+    const draft = await MealPlan.findOne({ _id: req.params.id, userId: req.userId, status: "draft" }).session(session);
+    if (!draft) throw new ScheduleConflict("Draft not found", 404);
+    const active = await currentTarget(req.userId!, body.data, session);
+    if (!active) throw new ScheduleConflict("You don't have a current plan.");
+    const from = draft.days.find((day) => day.day === body.data.fromDay);
+    const to = active.days.find((day) => day.day === body.data.toDay);
+    if (!from || !to) throw new ScheduleConflict("Day not found", 404);
+    if (to.date! < calendarToday(body.data.timezone)) throw new ScheduleConflict("Past days cannot be replaced.");
+    const kept = to.meals.filter((meal) => meal.eaten);
+    const types = new Set(kept.map((meal) => meal.type));
+    const incoming = freshMeals(from.meals).filter((meal) => !types.has(meal.type));
+    const next = orderedMeals([...kept.map((meal) => meal.toObject()), ...incoming]);
+    if (JSON.stringify(orderedMeals(to.meals.map((meal) => meal.toObject())).map(recipeKey)) === JSON.stringify(next.map(recipeKey))) throw new ScheduleConflict("That replacement would not change any meals.");
+    to.set("meals", next);
+    await active.save({ session });
+    return active;
+  });
+  await respondWith(res, active, req.userId!);
+});
+
+router.post("/:id/meals/:mealId/eaten", async (req: AuthRequest, res) => {
+  const body = z.object({ revision: z.number().int().nonnegative(), confirm: z.boolean().default(false), timezone: timezoneSchema }).safeParse(req.body);
+  if (!body.success || !isValidObjectId(req.params.id) || !isValidObjectId(req.params.mealId)) return res.status(400).json({ error: "Invalid request" });
   try {
-    const plan = await mongoose.connection.transaction(async (session) => {
+    const plan = await scheduleTransaction(req.userId!, async (session) => {
       const plan = await MealPlan.findOne({ _id: req.params.id, userId: req.userId, status: "active" }).session(session);
-      const meal = plan?.days.find((d) => d.day === body.data.day)?.meals[body.data.index];
-      if (!plan || !meal) return null;
-      if (meal.made === body.data.made) return plan;
-      const ingredients = meal.ingredients.map((item) => ({ name: item.name, quantity: item.quantity, unit: item.unit }));
-      if (body.data.made) {
-        meal.set("consumed", await consumeIngredients(req.userId!, ingredients, session, body.data.confirm));
-        meal.made = true;
-        meal.madeAt = new Date();
-      } else {
-        await restoreIngredients(req.userId!, meal.consumed.map((item) => ({ ...item.toObject(), expiryDate: item.expiryDate ?? null })), session);
-        meal.set("consumed", []);
-        meal.made = false;
-        meal.madeAt = undefined;
+      const day = plan?.days.find((day) => day.meals.some((meal) => String(meal._id) === req.params.mealId));
+      const meal = day?.meals.find((meal) => String(meal._id) === req.params.mealId);
+      if (!plan || !day || !meal) throw new ScheduleConflict("Meal no longer exists. Refresh your plan.", 404);
+      if (meal.eaten) return plan;
+      if (plan.__v !== body.data.revision) throw new ScheduleConflict();
+      {
+        if (day.date! > calendarToday(body.data.timezone)) throw new ScheduleConflict("Future meals cannot be marked as eaten.");
+        const consumed = await consumeIngredients(req.userId!, meal.ingredients.map((item) => ({ name: item.name, quantity: item.quantity, unit: item.unit })), session, body.data.confirm);
+        meal.eaten = true;
+        meal.historyEntryId = new mongoose.Types.ObjectId();
+        await FoodHistory.create([{ _id: meal.historyEntryId, userId: req.userId!, mealId: meal._id, sourcePlanId: plan._id, sourcePlanTitle: plan.title,
+          date: day.date!, recordedAt: new Date(), meal: meal.toObject(), consumed }], { session });
+        await plan.save({ session });
       }
-      await plan.save({ session });
       return plan;
     });
-    if (!plan) return res.status(404).json({ error: "Meal not found" });
     await respondWith(res, plan, req.userId!);
   } catch (error) {
     if (error instanceof PantryShortage) return res.status(409).json({ error: error.message, code: "SHORTAGE", shortages: error.shortages });
@@ -237,7 +266,9 @@ router.post("/:id/meals/made", async (req: AuthRequest, res) => {
 
 router.delete("/:id", async (req: AuthRequest, res) => {
   if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
-  await MealPlan.deleteOne({ _id: req.params.id, userId: req.userId });
+  await scheduleTransaction(req.userId!, async (session) => {
+    await MealPlan.deleteOne({ _id: req.params.id, userId: req.userId }, { session });
+  });
   res.status(204).end();
 });
 

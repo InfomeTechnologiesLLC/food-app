@@ -50,6 +50,7 @@ export default function PlansScreen() {
 
   return (
     <Screen edges={['bottom']}>
+      <Button title="Food history" variant="secondary" onPress={() => router.push('/food-history')} />
       <ThemedView type="backgroundElement" style={{ borderRadius: 16, padding: Spacing.three, gap: Spacing.three }}>
         <Section title="How many days?">
           <ChipGroup options={DAY_OPTIONS} value={days} onChange={setDays} format={(d) => `${d}`} />
@@ -118,7 +119,7 @@ function PlanRow({ plan: p }: { plan: MealPlanSummary }) {
       <ThemedView type="backgroundElement" style={{ borderRadius: 12, padding: Spacing.three, gap: 2 }}>
         <ThemedText>{p.title}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          {p.dayCount} day{p.dayCount === 1 ? '' : 's'} · {shoppingLabel(p.maxExtraItems)} · {new Date(p.status === 'active' && p.startDate ? p.startDate : p.createdAt).toLocaleDateString()}
+          {p.dayCount} day{p.dayCount === 1 ? '' : 's'} · {shoppingLabel(p.maxExtraItems)} · {new Date(p.status === 'active' && p.startDate ? `${p.startDate}T12:00:00` : p.createdAt).toLocaleDateString()}
         </ThemedText>
         <ThemedText type="small" style={{ color: p.readyMeals === p.totalMeals ? theme.tint : theme.textSecondary }}>
           {p.readyMeals === p.totalMeals

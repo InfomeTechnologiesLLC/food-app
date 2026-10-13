@@ -25,8 +25,8 @@ test("incompatible units cannot imply sufficient stock", () => {
   assert.equal(readiness([eggs], [item("egg", 2, "pcs")]).readyMeals, 0);
   assert.deepEqual(buildShoppingList([meal(eggs)], [item("egg", 2, "pcs")]), [eggs]);
 });
-test("pantry stock is spent once across the plan; made meals are excluded", () => {
-  const meals = [meal(item("rice", 200)), meal(item("rice", 200)), { ...meal(item("rice", 500)), made: true }];
+test("pantry stock is spent once across the plan; eaten meals are excluded", () => {
+  const meals = [meal(item("rice", 200)), meal(item("rice", 200)), { ...meal(item("rice", 500)), eaten: true }];
   assert.deepEqual(buildShoppingList(meals, [item("rice", 250)]), [item("rice", 150)]);
 });
 test("duplicate ingredients within a meal cannot reuse stock", () => {

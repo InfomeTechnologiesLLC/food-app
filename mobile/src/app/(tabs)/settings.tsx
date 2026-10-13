@@ -81,7 +81,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <Screen edges={['bottom']}>
+    <Screen edges={[]} bounces={false} alwaysBounceVertical={false} overScrollMode="never">
       <View style={styles.profile}>
         <View style={[styles.avatar, { backgroundColor: `${theme.tint}26` }]}>
           <ThemedText style={[styles.avatarText, { color: theme.tint }]}>{name.charAt(0).toUpperCase()}</ThemedText>

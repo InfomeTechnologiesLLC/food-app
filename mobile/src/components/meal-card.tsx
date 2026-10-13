@@ -10,8 +10,8 @@ import { formatQty } from '@/lib/plans';
 import type { Meal } from '@/lib/types';
 import { stockMessage } from '@/lib/stock-message';
 
-/** `onToggleMade` is only passed for the current plan, where meals can be marked as made. */
-export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggleMade?: () => void; toggling?: boolean }) {
+/** `onToggleEaten` is only passed for the current plan, where meals can be marked as eaten. */
+export function MealCard({ meal, onToggleEaten, toggling, unavailableLabel, actionDisabled }: { meal: Meal; onToggleEaten?: () => void; toggling?: boolean; unavailableLabel?: string; actionDisabled?: boolean }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
 
@@ -20,7 +20,7 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
       onPress={() => setOpen((o) => !o)}
       style={[
         styles.card,
-        { backgroundColor: theme.backgroundElement, borderColor: meal.allergyWarnings.length ? theme.danger : 'transparent', opacity: meal.made ? 0.7 : 1 },
+        { backgroundColor: theme.backgroundElement, borderColor: meal.allergyWarnings.length ? theme.danger : 'transparent', opacity: meal.eaten ? 0.7 : 1 },
       ]}>
       <View style={styles.header}>
         <View style={{ flex: 1, gap: 2 }}>
@@ -33,7 +33,7 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={theme.textSecondary} />
       </View>
 
-      {meal.made ? <MadeBadge /> : <ReadyBadge meal={meal} />}
+      {meal.eaten ? <EatenBadge /> : <ReadyBadge meal={meal} />}
 
       {meal.allergyWarnings.length > 0 && (
         <ThemedText type="small" themeColor="danger">
@@ -62,10 +62,10 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
             <ThemedText type="smallBold">Ingredients</ThemedText>
             {meal.ingredients.map((i, idx) => (
               <View key={idx} style={{ flexDirection: 'row', gap: Spacing.two }}>
-                <Ionicons name={i.available ? 'checkmark-circle' : 'cart-outline'} size={16} color={i.available ? theme.tint : theme.warning} style={{ marginTop: 2 }} />
+                <Ionicons name={meal.eaten || i.available ? 'checkmark-circle' : 'cart-outline'} size={16} color={meal.eaten || i.available ? theme.tint : theme.warning} style={{ marginTop: 2 }} />
                 <ThemedText type="small" style={{ flex: 1 }}>
                   {i.name} · {formatQty(i.quantity, i.unit)}
-                  {!i.available && <ThemedText type="small" style={{ color: theme.warning }}>{'\n'}{stockMessage(i)}</ThemedText>}
+                  {!meal.eaten && !i.available && <ThemedText type="small" style={{ color: theme.warning }}>{'\n'}{stockMessage(i)}</ThemedText>}
                 </ThemedText>
               </View>
             ))}
@@ -79,17 +79,18 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
         </View>
       )}
 
-      {onToggleMade && (
+      {unavailableLabel && <ThemedText type="small" themeColor="textSecondary">{unavailableLabel}</ThemedText>}
+      {onToggleEaten && (
         <Pressable
-          onPress={onToggleMade}
-          disabled={toggling}
-          style={({ pressed }) => [styles.madeButton, { backgroundColor: theme.backgroundSelected, borderColor: theme.border, opacity: toggling ? 0.5 : pressed ? 0.7 : 1 }]}>
+          onPress={onToggleEaten}
+          disabled={toggling || actionDisabled}
+          style={({ pressed }) => [styles.eatenButton, { backgroundColor: theme.backgroundSelected, borderColor: theme.border, opacity: toggling || actionDisabled ? 0.5 : pressed ? 0.7 : 1 }]}>
           {toggling ? (
             <ActivityIndicator color={theme.text} />
           ) : (
             <>
-              <Ionicons name={meal.made ? 'arrow-undo-outline' : 'checkmark-done-outline'} size={16} color={theme.text} />
-              <ThemedText type="small">{meal.made ? 'Undo, I didn\'t make it' : 'I made this'}</ThemedText>
+              <Ionicons name={meal.eaten ? 'arrow-undo-outline' : 'checkmark-done-outline'} size={16} color={theme.text} />
+              <ThemedText type="small">{meal.eaten ? 'Undo, I didn\'t eat it' : 'Mark as eaten'}</ThemedText>
             </>
           )}
         </Pressable>
@@ -98,12 +99,12 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
   );
 }
 
-function MadeBadge() {
+function EatenBadge() {
   const theme = useTheme();
   return (
     <View style={[styles.badge, { borderColor: theme.tint }]}>
       <Ionicons name="checkmark-circle" size={14} color={theme.tint} />
-      <ThemedText type="small" style={{ color: theme.tint }}>Made · ingredients taken from pantry</ThemedText>
+      <ThemedText type="small" style={{ color: theme.tint }}>Eaten · recorded in food history</ThemedText>
     </View>
   );
 }
@@ -128,5 +129,5 @@ const styles = StyleSheet.create({
   badge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderWidth: 1, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: 2, maxWidth: '100%' },
   card: { borderRadius: 12, padding: Spacing.three, gap: Spacing.two, borderWidth: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  madeButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 10, borderWidth: 1 },
+  eatenButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 10, borderWidth: 1 },
 });

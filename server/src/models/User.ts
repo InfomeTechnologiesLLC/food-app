@@ -20,6 +20,7 @@ const userSchema = new Schema(
       plansThisMonth: { type: Number, default: 0 },
     },
     pushTokens: { type: [String], default: [] },
+    scheduleRevision: { type: Number, default: 0 },
     onboarded: { type: Boolean, default: false },
   },
   { timestamps: true }

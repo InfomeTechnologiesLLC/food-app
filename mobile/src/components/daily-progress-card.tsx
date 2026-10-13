@@ -6,16 +6,18 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { dailyProgress } from '@/lib/daily-progress';
-import type { MealPlan } from '@/lib/types';
+import type { MealPlan, NutritionTotals } from '@/lib/types';
 
-export function DailyProgressCard({ plan, loading, error, onRetry }: {
+export function DailyProgressCard({ plan, history, date, loading, error, onRetry }: {
   plan?: MealPlan;
+  date: string;
+  history?: NutritionTotals;
   loading: boolean;
   error?: Error | null;
   onRetry: () => void;
 }) {
   const theme = useTheme();
-  const progress = plan ? dailyProgress(plan) : undefined;
+  const progress = dailyProgress(plan, history, date);
   const hasMeals = !!progress?.totalMeals;
   const openMeals = () => plan
     ? router.push({ pathname: '/plan/[id]', params: { id: plan._id } })
@@ -41,17 +43,17 @@ export function DailyProgressCard({ plan, loading, error, onRetry }: {
           <View style={styles.row}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
               <Ionicons name="checkmark-done-outline" size={16} color={theme.tint} />
-              <ThemedText type="small">{progress.madeMeals} / {progress.totalMeals} meals made</ThemedText>
+              <ThemedText type="small">{progress.eatenMeals}{progress.hasTarget ? ` / ${progress.totalMeals}` : ''} meals eaten</ThemedText>
             </View>
-            <ThemedText type="small" themeColor="tint">{Math.round(progress.madeMeals / progress.totalMeals * 100)}%</ThemedText>
+            {progress.hasTarget && <ThemedText type="small" themeColor="tint">{Math.round(progress.eatenMeals / progress.totalMeals * 100)}%</ThemedText>}
           </View>
-          <View
+          {progress.hasTarget && <View
             accessibilityRole="progressbar"
-            accessibilityLabel="Today's meals made"
-            accessibilityValue={{ min: 0, max: progress.totalMeals, now: progress.madeMeals }}
+            accessibilityLabel="Today's meals eaten"
+            accessibilityValue={{ min: 0, max: progress.totalMeals, now: progress.eatenMeals }}
             style={[styles.track, { backgroundColor: theme.backgroundSelected }]}>
-            <View style={[styles.track, { width: `${progress.madeMeals / progress.totalMeals * 100}%`, backgroundColor: theme.tint }]} />
-          </View>
+            <View style={[styles.track, { width: `${progress.eatenMeals / progress.totalMeals * 100}%`, backgroundColor: theme.tint }]} />
+          </View>}
           <View style={styles.nutrients}>
             {([
               ['Calories', 'calories', 'kcal'],
@@ -62,10 +64,10 @@ export function DailyProgressCard({ plan, loading, error, onRetry }: {
               <View key={key} style={styles.nutrient}>
                 <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>{label}</ThemedText>
                 <ThemedText style={{ fontSize: 20, lineHeight: 26, fontWeight: 700 }}>
-                  {Math.round(progress.made[key])}
+                  {Math.round(progress.eaten[key])}
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 11 }}>
-                  / {Math.round(progress.planned[key])} {unit}
+                  {progress.hasTarget ? `/ ${Math.round(progress.planned[key])} ` : ''}{unit}
                 </ThemedText>
               </View>
             ))}
@@ -74,13 +76,16 @@ export function DailyProgressCard({ plan, loading, error, onRetry }: {
       ) : (
         <>
           <ThemedText type="small" themeColor="textSecondary">
-            {plan ? 'No meals planned for today. Add more days to track your progress.' : 'Plan today’s meals to see nutrition totals and track what you make.'}
+            {plan ? 'No meals planned for today. Add more days to track your progress.' : 'Plan today’s meals to see nutrition totals and track what you eat.'}
           </ThemedText>
           <Pressable accessibilityRole="button" onPress={openMeals} hitSlop={8}>
             <ThemedText type="small" themeColor="tint">{plan ? 'View plan →' : 'Plan meals →'}</ThemedText>
           </Pressable>
         </>
       )}
+      <Pressable accessibilityRole="button" onPress={() => router.push('/food-history')} hitSlop={8}>
+        <ThemedText type="small" themeColor="tint">Food history →</ThemedText>
+      </Pressable>
     </View>
   );
 }

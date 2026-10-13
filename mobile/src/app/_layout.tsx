@@ -39,6 +39,7 @@ function RootNavigator() {
         </Stack.Protected>
         <Stack.Protected guard={!!user?.onboarded}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="food-history" options={{ headerShown: true, title: 'Food history' }} />
           <Stack.Screen name="upgrade" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
           <Stack.Screen name="plan/[id]" options={{
             headerShown: true,
