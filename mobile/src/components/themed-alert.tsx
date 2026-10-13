@@ -37,7 +37,7 @@ export function AlertHost() {
   const cancel = alert?.buttons.find((b) => b.style === 'cancel');
 
   return (
-    <Modal visible={!!alert} transparent animationType="fade" statusBarTranslucent onRequestClose={() => close(cancel)}>
+    <Modal visible={!!alert} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => close(cancel)}>
       <Pressable style={styles.backdrop} onPress={() => cancel && close(cancel)}>
         <Pressable style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
           <ThemedText type="smallBold" style={{ fontSize: 18 }}>{alert?.title}</ThemedText>

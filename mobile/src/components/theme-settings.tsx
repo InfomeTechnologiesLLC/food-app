@@ -21,7 +21,6 @@ export function ThemeSettings() {
       <BottomSheet
         visible={open}
         title="Theme"
-        subtitle="System follows your phone's light or dark setting."
         onClose={() => setOpen(false)}>
         <ChipGroup options={THEME_PREFERENCES} value={pref} onChange={saveThemePreference} format={humanize} fill />
         <Button title="Done" onPress={() => setOpen(false)} />

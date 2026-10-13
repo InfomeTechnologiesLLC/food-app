@@ -126,10 +126,6 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
-      <ThemedText type="small" themeColor="textSecondary" style={styles.disclaimer}>
-        Meal suggestions are general guidance, not medical or dietary advice.
-      </ThemedText>
-
       <BottomSheet
         visible={!!editing}
         title={editing ? SHEET_TITLES[editing] : ''}
@@ -175,5 +171,4 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.two },
   footerLink: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  disclaimer: { textAlign: 'center', fontSize: 12, marginTop: Spacing.two },
 });
