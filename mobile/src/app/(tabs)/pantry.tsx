@@ -33,7 +33,7 @@ export default function PantryScreen() {
     <Screen scroll={false} edges={['bottom']}>
       <FlatList
         data={filtered}
-        keyExtractor={(i) => i._id}
+        keyExtractor={(i) => i.key}
         renderItem={({ item }) => <PantryRow item={item} />}
         onRefresh={refetch}
         refreshing={isRefetching}
@@ -87,7 +87,7 @@ export default function PantryScreen() {
           isLoading ? (
             <ActivityIndicator />
           ) : error ? (
-            <ThemedText themeColor="danger">Couldn't load pantry: {(error as Error).message}</ThemedText>
+            <ThemedText themeColor="danger">Couldn’t load pantry: {(error as Error).message}</ThemedText>
           ) : (
             <ThemedText themeColor="textSecondary">
               {search || category ? 'No matches.' : 'Your pantry is empty. Add what you have.'}

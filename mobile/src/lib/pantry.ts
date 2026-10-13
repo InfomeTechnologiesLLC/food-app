@@ -1,21 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
-import type { PantryInput, PantryItem } from '@/lib/types';
+import type { PantryIngredient, PantryInput } from '@/lib/types';
 
 const KEY = ['pantry'];
 
 export function usePantry() {
-  return useQuery({ queryKey: KEY, queryFn: () => api<PantryItem[]>('/pantry') });
+  return useQuery({ queryKey: KEY, queryFn: () => api<PantryIngredient[]>('/pantry') });
 }
 
-export function useSavePantryItem() {
+export function useSavePantryBatch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id?: string; data: Partial<PantryInput> }) =>
-      id
-        ? api<PantryItem>(`/pantry/${id}`, { method: 'PATCH', body: data })
-        : api<PantryItem>('/pantry', { method: 'POST', body: data }),
+    mutationFn: ({ ingredientId, batchId, data, requestId }: { ingredientId?: string; batchId?: string; data: PantryInput; requestId?: string }) =>
+      ingredientId && batchId
+        ? api<PantryIngredient[]>(`/pantry/${ingredientId}/batches/${batchId}`, { method: 'PATCH', body: data })
+        : api<PantryIngredient[]>('/pantry', { method: 'POST', body: data, headers: { 'Idempotency-Key': requestId! } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
       qc.invalidateQueries({ queryKey: ['plans'] });
@@ -23,10 +23,10 @@ export function useSavePantryItem() {
   });
 }
 
-export function useDeletePantryItem() {
+export function useDeletePantryBatch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api<void>(`/pantry/${id}`, { method: 'DELETE' }),
+    mutationFn: ({ ingredientId, batchId }: { ingredientId: string; batchId: string }) => api<void>(`/pantry/${ingredientId}/batches/${batchId}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
       qc.invalidateQueries({ queryKey: ['plans'] });

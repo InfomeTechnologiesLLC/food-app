@@ -1,8 +1,7 @@
-import { stockBalance, type StockItem } from "./stock.js";
+import { stockAssessment, type StockItem } from "./stock.js";
 
 interface PlanLike {
   days: { day: number; meals: { ingredients: StockItem[] }[] }[];
-  shoppingList: (StockItem & { checked: boolean })[];
 }
 
 /**
@@ -18,8 +17,11 @@ export function annotateReadiness<T extends PlanLike>(plan: T, pantry: StockItem
     ...d,
     meals: d.meals.map((m) => {
       // Each meal is assessed on its own; repeated ingredients within it share a balance.
-      const shortage = stockBalance(have);
-      const ingredients = m.ingredients.map((i) => ({ ...i, available: shortage(i) === 0 }));
+      const assess = stockAssessment(have);
+      const ingredients = m.ingredients.map((i) => {
+        const balance = assess(i);
+        return { ...i, ...balance, available: balance.shortage === 0 };
+      });
       const missing = ingredients.filter((i) => !i.available).map((i) => i.name);
       totalMeals++;
       if (missing.length === 0) readyMeals++;

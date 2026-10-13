@@ -32,8 +32,14 @@ const UNITS: Record<string, { dim: "mass" | "volume" | "count"; factor: number }
 
 const lookup = (unit: string) => {
   const u = unit.toLowerCase().trim().replace(/\.$/, "");
-  return UNITS[u] ?? UNITS[u.replace(/e?s$/, "")];
+  return UNITS[u] ?? UNITS[u.replace(/s$/, "")] ?? UNITS[u.replace(/es$/, "")];
 };
+
+/** Stable display totals regardless of which purchase batch was inserted first. */
+export function stockUnit(unit: string) {
+  const dimension = lookup(unit)?.dim;
+  return dimension === "mass" ? "g" : dimension === "volume" ? "ml" : dimension === "count" ? "pcs" : unit.trim().toLowerCase();
+}
 
 /** Converts `quantity` from one unit to another, or null when they can't be compared (e.g. g → pcs). */
 export function convert(quantity: number, from: string, to: string): number | null {

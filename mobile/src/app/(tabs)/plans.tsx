@@ -58,7 +58,7 @@ export default function PlansScreen() {
           <ChipGroup options={SHOPPING_OPTIONS} value={maxExtraItems} onChange={setMaxExtraItems} format={shoppingLabel} fill />
           {pantryOnlyEmpty ? (
             <ThemedText type="small" themeColor="danger">
-              Your pantry is empty, so there's nothing to cook from. Scan your groceries or allow a few extra ingredients.
+              Your pantry is empty, so there’s nothing to cook from. Scan your groceries or allow a few extra ingredients.
             </ThemedText>
           ) : maxExtraItems === 0 && pantry.length < 4 && (
             <ThemedText type="small" style={{ color: theme.warning }}>
@@ -123,7 +123,7 @@ function PlanRow({ plan: p }: { plan: MealPlanSummary }) {
         <ThemedText type="small" style={{ color: p.readyMeals === p.totalMeals ? theme.tint : theme.textSecondary }}>
           {p.readyMeals === p.totalMeals
             ? `All ${p.totalMeals} meals ready to cook`
-            : `${p.readyMeals}/${p.totalMeals} meals ready · ${p.shoppingTotal - p.shoppingChecked} item${p.shoppingTotal - p.shoppingChecked === 1 ? '' : 's'} to buy`}
+            : `${p.readyMeals}/${p.totalMeals} meals ready · ${p.shoppingTotal} item${p.shoppingTotal === 1 ? '' : 's'} to buy`}
         </ThemedText>
       </ThemedView>
     </Pressable>

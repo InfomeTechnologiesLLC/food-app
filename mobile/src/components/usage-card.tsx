@@ -15,7 +15,7 @@ function UsageStat({ label, used, limit }: { label: string; used: number; limit:
       <View style={{ flex: 1 }}>
         <ThemedText style={{ fontWeight: 700 }}>{label}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 13 }}>
-          {limit == null ? 'Unlimited' : `${used} of ${limit} used`}
+          {limit === null ? 'Unlimited' : `${used} of ${limit} used`}
         </ThemedText>
       </View>
     </View>
@@ -27,9 +27,9 @@ export function UsageCard({ user }: { user: User }) {
   const theme = useTheme();
   return (
     <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-      <UsageStat label="Scans" used={user.usage.scansThisMonth} limit={user.limits?.scansPerMonth ?? null} />
+      <UsageStat label="Scans" used={user.usage.scansThisMonth} limit={user.limits.scansPerMonth} />
       <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
-      <UsageStat label="Plans" used={user.usage.plansThisMonth} limit={user.limits?.plansPerMonth ?? null} />
+      <UsageStat label="Plans" used={user.usage.plansThisMonth} limit={user.limits.plansPerMonth} />
     </View>
   );
 }

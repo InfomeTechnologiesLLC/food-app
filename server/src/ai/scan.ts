@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { gemini, GEMINI_MODEL, withRetry, AIError } from "./gemini.js";
-import { PANTRY_CATEGORIES } from "../models/PantryItem.js";
+import { PANTRY_CATEGORIES } from "../domain/pantry.js";
 
 export type ScanType = "groceries" | "receipt";
 

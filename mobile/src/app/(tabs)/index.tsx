@@ -6,14 +6,11 @@ import { BmiCard } from '@/components/bmi-card';
 import { DailyProgressCard } from '@/components/daily-progress-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
-import { humanize } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import { daysUntil, usePantry } from '@/lib/pantry';
 import { activePlan, usePlan, usePlans } from '@/lib/plans';
-import type { PantryItem } from '@/lib/types';
-import { formatQty } from '@/lib/quantities';
 import { remaining } from '@/lib/usage';
 
 const plural = (n: number, word: string) => `${word}${n === 1 ? '' : 's'}`;
@@ -39,38 +36,6 @@ function StatTile({ value, label, icon, iconColor, href }: {
   );
 }
 
-function freshLabel(days: number) {
-  if (days < 0) return 'Expired';
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Tomorrow';
-  return `In ${days} days`;
-}
-
-function FreshRow({ item, last }: { item: PantryItem; last: boolean }) {
-  const theme = useTheme();
-  const days = daysUntil(item.expiryDate!);
-  const color = days <= 0 ? theme.danger : theme.warning;
-  return (
-    <Pressable
-      onPress={() => router.push({ pathname: '/pantry-item', params: { id: item._id } })}
-      style={({ pressed }) => [
-        styles.rowBetween,
-        { alignItems: 'center', paddingVertical: Spacing.three, opacity: pressed ? 0.7 : 1 },
-        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
-      ]}>
-      <View style={{ flex: 1, gap: 2 }}>
-        <ThemedText style={{ fontWeight: 600 }}>{item.name}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>
-          {formatQty(item.quantity, item.unit)} · {humanize(item.category)}
-        </ThemedText>
-      </View>
-      <View style={[styles.pill, { backgroundColor: `${color}22` }]}>
-        <ThemedText type="small" style={{ fontSize: 12, color }}>{freshLabel(days)}</ThemedText>
-      </View>
-    </Pressable>
-  );
-}
-
 export default function HomeScreen() {
   const theme = useTheme();
   const { user } = useAuth();
@@ -85,8 +50,7 @@ export default function HomeScreen() {
   };
   const scansLeft = remaining(user, 'scans');
   const expiringSoon = items.filter((i) => i.expiryDate && daysUntil(i.expiryDate) <= 3);
-  const freshness = [...expiringSoon].sort((a, b) => daysUntil(a.expiryDate!) - daysUntil(b.expiryDate!));
-  const toBuy = latest ? latest.shoppingTotal - latest.shoppingChecked : 0;
+  const toBuy = latest ? latest.shoppingTotal : 0;
   const progress = latest && latest.totalMeals > 0 ? latest.readyMeals / latest.totalMeals : 0;
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -188,20 +152,6 @@ export default function HomeScreen() {
         error={plansError ?? planError}
         onRetry={refresh}
       />
-      {freshness.length > 0 && (
-        <View style={{ marginTop: Spacing.two }}>
-          <View style={[styles.rowBetween, { alignItems: 'center', marginBottom: Spacing.one }]}>
-            <ThemedText style={{ fontSize: 17, fontWeight: 700 }}>Freshness check</ThemedText>
-            <Pressable onPress={() => router.navigate('/pantry')} hitSlop={8} style={[styles.row, { gap: Spacing.one }]}>
-              <ThemedText type="small" themeColor="tint">View pantry</ThemedText>
-              <Ionicons name="chevron-forward" size={16} color={theme.tint} />
-            </Pressable>
-          </View>
-          {freshness.map((item, i) => (
-            <FreshRow key={item._id} item={item} last={i === freshness.length - 1} />
-          ))}
-        </View>
-      )}
     </Screen>
   );
 }
@@ -216,6 +166,5 @@ const styles = StyleSheet.create({
   heroValue: { fontSize: 56, lineHeight: 64, fontWeight: 700 },
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: 600, letterSpacing: 1.2 },
   action: { height: 50, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
 });

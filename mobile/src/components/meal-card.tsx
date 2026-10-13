@@ -8,6 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatQty } from '@/lib/plans';
 import type { Meal } from '@/lib/types';
+import { stockMessage } from '@/lib/stock-message';
 
 /** `onToggleMade` is only passed for the current plan, where meals can be marked as made. */
 export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggleMade?: () => void; toggling?: boolean }) {
@@ -64,7 +65,7 @@ export function MealCard({ meal, onToggleMade, toggling }: { meal: Meal; onToggl
                 <Ionicons name={i.available ? 'checkmark-circle' : 'cart-outline'} size={16} color={i.available ? theme.tint : theme.warning} style={{ marginTop: 2 }} />
                 <ThemedText type="small" style={{ flex: 1 }}>
                   {i.name} · {formatQty(i.quantity, i.unit)}
-                  {!i.available && <ThemedText type="small" style={{ color: theme.warning }}>  (to buy)</ThemedText>}
+                  {!i.available && <ThemedText type="small" style={{ color: theme.warning }}>{'\n'}{stockMessage(i)}</ThemedText>}
                 </ThemedText>
               </View>
             ))}
@@ -114,10 +115,10 @@ function ReadyBadge({ meal }: { meal: Meal }) {
   return (
     <View style={[styles.badge, { borderColor: color }]}>
       <Ionicons name={ready ? 'flame' : 'cart'} size={14} color={color} />
-      <ThemedText type="small" style={{ color, flexShrink: 1 }} numberOfLines={2}>
+      <ThemedText type="small" style={{ color, flexShrink: 1 }}>
         {ready
           ? 'Ready to cook now'
-          : `Need ${meal.missing.length} item${meal.missing.length === 1 ? '' : 's'}: ${meal.missing.join(', ')}`}
+          : meal.ingredients.filter((item) => !item.available).map(stockMessage).join('\n')}
       </ThemedText>
     </View>
   );

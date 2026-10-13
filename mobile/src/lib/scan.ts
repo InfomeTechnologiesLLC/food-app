@@ -4,7 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
 import { api } from '@/lib/api';
-import type { Category, PantryItem, ScanResult, ScanType } from '@/lib/types';
+import type { Category, PantryIngredient, ScanResult, ScanType } from '@/lib/types';
 
 const MAX_SIDE = 1600;
 
@@ -62,12 +62,12 @@ export function useConfirmScan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ scanId, items }: { scanId: string; items: ReviewItem[] }) =>
-      api<PantryItem[]>(`/scans/${scanId}/confirm`, {
+      api<PantryIngredient[]>(`/scans/${scanId}/confirm`, {
         method: 'POST',
         body: {
           items: items.map((i) => ({
             name: i.name.trim(),
-            quantity: Number(i.quantity.replace(',', '.')) || 1,
+            quantity: Number(i.quantity.replace(',', '.')),
             unit: i.unit.trim() || 'pcs',
             category: i.category,
             expiryDate: i.expiryDays == null ? null : new Date(Date.now() + i.expiryDays * 86_400_000).toISOString(),

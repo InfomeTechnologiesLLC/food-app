@@ -1,53 +1,74 @@
 import { Router } from "express";
 import { z } from "zod";
-import { isValidObjectId } from "mongoose";
-import { PantryItem, PANTRY_CATEGORIES } from "../models/PantryItem.js";
+import mongoose, { isValidObjectId } from "mongoose";
+import { PantryIngredient } from "../models/PantryIngredient.js";
+import { PANTRY_CATEGORIES } from "../domain/pantry.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { addStock, canonicalStock } from "../lib/add-stock.js";
+import { presentIngredient, readPantry } from "../lib/pantry.js";
 
 const router = Router();
 router.use(requireAuth);
-
-// No .default()s here: they would also fire on PATCH and overwrite fields the client didn't send.
-// Mongoose schema defaults cover creation.
 const itemSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  quantity: z.number().positive().optional(),
-  unit: z.string().trim().max(20).optional(),
-  category: z.enum(PANTRY_CATEGORIES).optional(),
-  expiryDate: z.coerce.date().nullable().optional(),
-  source: z.enum(["groceries", "receipt", "manual"]).optional(),
+  quantity: z.number().positive(),
+  unit: z.string().trim().min(1).max(20),
+  category: z.enum(PANTRY_CATEGORIES),
+  expiryDate: z.coerce.date().nullable(),
+  source: z.enum(["groceries", "receipt", "manual"]).default("manual"),
 });
-
-router.get("/", async (req: AuthRequest, res) => {
-  // Soonest-expiring first; items without an expiry go last
-  const items = await PantryItem.find({ userId: req.userId }).sort({ expiryDate: 1, name: 1 }).lean();
-  items.sort((a, b) => (a.expiryDate ? 0 : 1) - (b.expiryDate ? 0 : 1));
-  res.json(items);
-});
+const validIds = (ingredientId: unknown, batchId: unknown) => isValidObjectId(ingredientId) && isValidObjectId(batchId);
+router.get("/", async (req: AuthRequest, res) => res.json((await readPantry(req.userId!)).map(presentIngredient)));
 
 router.post("/", async (req: AuthRequest, res) => {
-  // Accepts a single item or an array (the scan confirm flow sends many)
-  const body = Array.isArray(req.body) ? req.body : [req.body];
-  const parsed = z.array(itemSchema).min(1).max(100).safeParse(body);
+  const parsed = itemSchema.safeParse(req.body);
+  const key = req.get("Idempotency-Key");
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const created = await PantryItem.insertMany(parsed.data.map((i) => ({ ...i, userId: req.userId })));
-  res.status(201).json(Array.isArray(req.body) ? created : created[0]);
+  if (!key || key.length > 100 || !/^[a-zA-Z0-9_-]+$/.test(key)) return res.status(400).json({ error: "A valid save key is required." });
+  await addStock(req.userId!, `manual:${key}`, [parsed.data]);
+  res.status(201).json((await readPantry(req.userId!)).map(presentIngredient));
 });
 
-router.patch("/:id", async (req: AuthRequest, res) => {
-  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Not found" });
-  const parsed = itemSchema.partial().safeParse(req.body);
+router.patch("/:ingredientId/batches/:batchId", async (req: AuthRequest, res) => {
+  if (!validIds(req.params.ingredientId, req.params.batchId)) return res.status(404).json({ error: "Batch not found" });
+  const parsed = itemSchema.omit({ source: true }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const item = await PantryItem.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, parsed.data, { new: true });
-  if (!item) return res.status(404).json({ error: "Not found" });
-  res.json(item);
+  const found = await mongoose.connection.transaction(async (session) => {
+    const ingredient = await PantryIngredient.findOne({ _id: req.params.ingredientId, userId: req.userId }).session(session);
+    const batch = ingredient?.batches.find((item) => String(item._id) === req.params.batchId);
+    if (!ingredient || !batch) return false;
+    const next = canonicalStock({ ...parsed.data, source: batch.source });
+    const replacement = { _id: batch._id, quantity: next.quantity, unit: next.unit, expiryDate: next.expiryDate, source: next.source };
+    if (ingredient.key === next.name) {
+      ingredient.category = next.category;
+      ingredient.batches = ingredient.batches.map((item) => String(item._id) === req.params.batchId ? replacement : item);
+      await ingredient.save({ session });
+    } else {
+      await PantryIngredient.findOneAndUpdate({ userId: req.userId, key: next.name }, {
+        $setOnInsert: { userId: req.userId, key: next.name, name: next.name, category: next.category },
+        $push: { batches: replacement },
+      }, { upsert: true, session, runValidators: true });
+      ingredient.batches = ingredient.batches.filter((item) => String(item._id) !== req.params.batchId);
+      if (ingredient.batches.length) await ingredient.save({ session });
+      else await ingredient.deleteOne({ session });
+    }
+    return true;
+  });
+  if (!found) return res.status(404).json({ error: "Batch not found" });
+  res.json((await readPantry(req.userId!)).map(presentIngredient));
 });
 
-router.delete("/:id", async (req: AuthRequest, res) => {
-  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Not found" });
-  const result = await PantryItem.deleteOne({ _id: req.params.id, userId: req.userId });
-  if (!result.deletedCount) return res.status(404).json({ error: "Not found" });
+router.delete("/:ingredientId/batches/:batchId", async (req: AuthRequest, res) => {
+  if (!validIds(req.params.ingredientId, req.params.batchId)) return res.status(404).json({ error: "Batch not found" });
+  const found = await mongoose.connection.transaction(async (session) => {
+    const ingredient = await PantryIngredient.findOne({ _id: req.params.ingredientId, userId: req.userId }).session(session);
+    if (!ingredient?.batches.some((batch) => String(batch._id) === req.params.batchId)) return false;
+    ingredient.batches = ingredient.batches.filter((batch) => String(batch._id) !== req.params.batchId);
+    if (ingredient.batches.length) await ingredient.save({ session });
+    else await ingredient.deleteOne({ session });
+    return true;
+  });
+  if (!found) return res.status(404).json({ error: "Batch not found" });
   res.status(204).end();
 });
-
 export default router;

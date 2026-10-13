@@ -26,25 +26,21 @@ import {
   usePlan,
   usePlans,
   useReplaceDay,
-  useToggleShoppingItem,
+  usePurchaseShoppingItem,
 } from '@/lib/plans';
 import type { Meal, MealPlan, MealPlanSummary, Shortage } from '@/lib/types';
+import { stockMessage } from '@/lib/stock-message';
 
 type Tab = 'meals' | 'shopping';
 
-const shortageLine = (s: Shortage) =>
-  s.unitMismatch
-    ? `• ${s.name}: needs ${formatQty(s.needed, s.unit)}, but your pantry lists it in a different unit. Update it yourself.`
-    : s.have > 0
-      ? `• ${s.name}: needs ${formatQty(s.needed, s.unit)}, you have ${formatQty(s.have, s.unit)}`
-      : `• ${s.name}: needs ${formatQty(s.needed, s.unit)}, not in your pantry`;
+const shortageLine = (s: Shortage) => `• ${stockMessage(s)}`;
 
 export default function PlanScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: plan, isLoading, error } = usePlan(id);
   const { data: plans = [] } = usePlans();
-  const toggle = useToggleShoppingItem(id);
+  const toggle = usePurchaseShoppingItem(id);
   const markMade = useMarkMade(id);
   const del = useDeletePlan();
   const [tab, setTab] = useState<Tab>('meals');
@@ -55,7 +51,7 @@ export default function PlanScreen() {
   if (error || !plan) return <Screen edges={['bottom']}><ThemedText themeColor="danger">{error?.message ?? 'Plan not found'}</ThemedText></Screen>;
 
   const isDraft = plan.status === 'draft';
-  const remaining = plan.shoppingList.filter((i) => !i.checked).length;
+  const remaining = plan.shoppingList.length;
   const allReady = plan.readyMeals === plan.totalMeals;
 
   const onDelete = () =>
@@ -146,21 +142,20 @@ export default function PlanScreen() {
           <Button title={isDraft ? 'Discard plan' : 'Delete plan'} variant="danger" onPress={onDelete} loading={del.isPending} />
         </>
       ) : plan.shoppingList.length === 0 ? (
-        <ThemedText themeColor="textSecondary">Nothing to buy. This plan only uses what's in your pantry. 🎉</ThemedText>
+        <ThemedText themeColor="textSecondary">Nothing to buy. Current stock covers all remaining meals. 🎉</ThemedText>
       ) : (
         <View style={{ gap: Spacing.two }}>
           <ThemedText type="small" themeColor="textSecondary">
-            Items the plan needs that aren't in your pantry. Tick them off as you buy them, and meals that use them become ready to cook.
+            Remaining quantities to buy for all unmade meals. A meal can be ready now while the rest of the plan still needs more. Tap an item to record buying its listed quantity and add it to your pantry.
           </ThemedText>
-          {[...plan.shoppingList]
-            .sort((a, b) => Number(a.checked) - Number(b.checked))
-            .map((item) => (
+          {toggle.error && <ThemedText themeColor="danger">{toggle.error.message}</ThemedText>}
+          {plan.shoppingList.map((item) => (
               <Pressable
                 key={item._id}
-                onPress={() => toggle.mutate({ itemId: item._id, checked: !item.checked })}
+                onPress={() => toggle.mutate({ itemId: item._id })}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.three, padding: Spacing.three, borderRadius: 12, backgroundColor: theme.backgroundElement }}>
-                <Ionicons name={item.checked ? 'checkbox' : 'square-outline'} size={22} color={item.checked ? theme.tint : theme.textSecondary} />
-                <ThemedText style={{ flex: 1, textDecorationLine: item.checked ? 'line-through' : 'none', opacity: item.checked ? 0.5 : 1 }}>
+                <Ionicons name="square-outline" size={22} color={theme.textSecondary} />
+                <ThemedText style={{ flex: 1 }}>
                   {item.name}
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">{formatQty(item.quantity, item.unit)}</ThemedText>

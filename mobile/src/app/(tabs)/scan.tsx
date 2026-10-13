@@ -77,6 +77,7 @@ export default function ScanScreen() {
     ]);
 
   const validItems = items.filter((i) => i.name.trim());
+  const invalidQuantities = validItems.some((item) => { const quantity = Number(item.quantity.replace(',', '.')); return !Number.isFinite(quantity) || quantity <= 0; });
 
   const save = () =>
     confirm.mutate(
@@ -112,12 +113,13 @@ export default function ScanScreen() {
         ))}
         <Button title="+ Add missing item" variant="secondary" onPress={addItem} />
 
+        {invalidQuantities && <ThemedText themeColor="danger">Each item needs a positive quantity.</ThemedText>}
         {confirm.error && <ThemedText themeColor="danger">{confirm.error.message}</ThemedText>}
         <Button
           title={`Save ${validItems.length} item${validItems.length === 1 ? '' : 's'} to pantry`}
           onPress={save}
           loading={confirm.isPending}
-          disabled={validItems.length === 0}
+          disabled={validItems.length === 0 || invalidQuantities}
         />
         <Button title="Discard" variant="danger" onPress={reset} />
       </Screen>

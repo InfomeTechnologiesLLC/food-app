@@ -89,18 +89,18 @@ export function useDeletePlan() {
 
 export const activePlan = (plans: MealPlanSummary[]) => plans.find((p) => p.status === 'active');
 
-/** Ticks a shopping item instantly, then syncs with the server (rolls back on failure). */
-export function useToggleShoppingItem(planId: string) {
+/** Record a purchase and remove its requirement optimistically; restore on failure. */
+export function usePurchaseShoppingItem(planId: string) {
   const qc = useQueryClient();
   const key = ['plans', planId];
   return useMutation({
-    mutationFn: ({ itemId, checked }: { itemId: string; checked: boolean }) =>
-      api<void>(`/plans/${planId}/shopping/${itemId}`, { method: 'PATCH', body: { checked } }),
-    onMutate: async ({ itemId, checked }) => {
+    mutationFn: ({ itemId }: { itemId: string }) =>
+      api<void>(`/plans/${planId}/purchases/${itemId}`, { method: 'POST' }),
+    onMutate: async ({ itemId }) => {
       await qc.cancelQueries({ queryKey: key });
       const previous = qc.getQueryData<MealPlan>(key);
       qc.setQueryData<MealPlan>(key, (p) =>
-        p && { ...p, shoppingList: p.shoppingList.map((i) => (i._id === itemId ? { ...i, checked } : i)) }
+        p && { ...p, shoppingList: p.shoppingList.filter((i) => i._id !== itemId) }
       );
       return { previous };
     },

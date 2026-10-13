@@ -6,8 +6,10 @@ import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { scanImage } from "../ai/scan.js";
 import { AIError } from "../ai/gemini.js";
 import { Scan } from "../models/Scan.js";
-import { PantryItem, PANTRY_CATEGORIES } from "../models/PantryItem.js";
+import { PANTRY_CATEGORIES } from "../domain/pantry.js";
 import { consumeUsage, refundUsage } from "../lib/usage.js";
+import { stockScan } from "../lib/stock-scan.js";
+import { readPantry, presentIngredient } from "../lib/pantry.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -55,7 +57,7 @@ const confirmSchema = z.object({
         quantity: z.number().positive(),
         unit: z.string().trim().max(20),
         category: z.enum(PANTRY_CATEGORIES),
-        expiryDate: z.coerce.date().nullable().optional(),
+        expiryDate: z.coerce.date().nullable(),
       })
     )
     .min(1)
@@ -68,17 +70,9 @@ router.post("/:id/confirm", async (req: AuthRequest, res) => {
   const parsed = confirmSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const scan = await Scan.findOneAndUpdate(
-    { _id: req.params.id, userId: req.userId, status: "pending_review" },
-    { status: "confirmed", confirmedCount: parsed.data.items.length },
-    { new: true }
-  );
-  if (!scan) return res.status(409).json({ error: "This scan was already saved or doesn't exist." });
-
-  const created = await PantryItem.insertMany(
-    parsed.data.items.map((i) => ({ ...i, userId: req.userId, source: scan.type }))
-  );
-  res.status(201).json(created);
+  const created = await stockScan(req.userId!, req.params.id as string, parsed.data.items);
+  if (!created) return res.status(409).json({ error: "This scan was already saved or doesn't exist." });
+  res.status(201).json((await readPantry(req.userId!)).map(presentIngredient));
 });
 
 export default router;

@@ -5,8 +5,8 @@ import { buildShoppingList } from "../src/lib/shopping.js";
 
 const item = (name: string, quantity: number, unit = "g") => ({ name, quantity, unit });
 const meal = (...ingredients: ReturnType<typeof item>[]) => ({ ingredients });
-const readiness = (ingredients: ReturnType<typeof item>[], pantry: ReturnType<typeof item>[], shoppingList: (ReturnType<typeof item> & { checked: boolean })[] = []) =>
-  annotateReadiness({ days: [{ day: 1, meals: [meal(...ingredients)] }], shoppingList }, pantry);
+const readiness = (ingredients: ReturnType<typeof item>[], pantry: ReturnType<typeof item>[]) =>
+  annotateReadiness({ days: [{ day: 1, meals: [meal(...ingredients)] }] }, pantry);
 
 test("50 g rice cannot cover 200 g; shopping includes only 150 g", () => {
   const rice = item("rice", 200);
@@ -34,14 +34,8 @@ test("duplicate ingredients within a meal cannot reuse stock", () => {
   assert.equal(result.readyMeals, 0);
   assert.deepEqual(result.days[0]!.meals[0]!.ingredients.map((i) => i.available), [true, false]);
 });
-test("shopping checkmarks do not substitute for pantry stock", () => {
-  const rice = item("rice", 200);
-  assert.equal(readiness([rice], [item("rice", 50)], [{ ...item("rice", 150), checked: true }]).readyMeals, 0);
-  assert.equal(readiness([rice], [], [{ ...item("rice", 150), checked: true }]).readyMeals, 0);
-  assert.equal(readiness([rice], [item("rice", 50)], [{ ...item("rice", 150), checked: false }]).readyMeals, 0);
-});
 test("each meal can be cooked independently from current stock", () => {
-  const result = annotateReadiness({ days: [{ day: 1, meals: [meal(item("rice", 200)), meal(item("rice", 200))] }], shoppingList: [] }, [item("rice", 200)]);
+  const result = annotateReadiness({ days: [{ day: 1, meals: [meal(item("rice", 200)), meal(item("rice", 200))] }] }, [item("rice", 200)]);
   assert.equal(result.readyMeals, 2);
 });
 test("compatible shortage units merge; staples remain assumed available", () => {

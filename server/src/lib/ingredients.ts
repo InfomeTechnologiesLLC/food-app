@@ -2,7 +2,8 @@
 export function normalize(name: string) {
   return name
     .toLowerCase()
-    .replace(/[^a-z\s]/g, " ")
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ")
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => (w.length > 3 && w.endsWith("oes") ? w.slice(0, -2) : w.length > 3 && w.endsWith("ies") ? w.slice(0, -3) + "y" : w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w))

@@ -26,7 +26,7 @@ router.patch("/preferences", async (req: AuthRequest, res) => {
   const user = await User.findByIdAndUpdate(
     req.userId,
     { $set: { ...set, onboarded: true } },
-    { new: true, runValidators: true }
+    { returnDocument: "after", runValidators: true }
   );
   if (!user) return res.status(401).json({ error: "Account not found" });
   res.json(toPublicUser(user));

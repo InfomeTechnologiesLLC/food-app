@@ -53,6 +53,7 @@ function RootNavigator() {
             name="pantry-item"
             options={{ presentation: 'modal', headerShown: true, title: 'Pantry item' }}
           />
+          <Stack.Screen name="pantry-ingredient" options={{ headerShown: true, title: 'Pantry ingredient' }} />
         </Stack.Protected>
       </Stack>
     </>

@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth.js";
 import meRoutes from "./routes/me.js";
 import pantryRoutes from "./routes/pantry.js";
 import scanRoutes from "./routes/scans.js";
+import { StockConflict } from "./lib/add-stock.js";
 import planRoutes from "./routes/plans.js";
 
 const app = express();
@@ -26,6 +27,7 @@ app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
 // Last-resort handler: never leak stack traces to the app
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  if (err instanceof StockConflict) return res.status(err.status).json({ error: err.message });
   if (err instanceof multer.MulterError) {
     return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "Image is too large (max 8 MB)." : err.message });
   }

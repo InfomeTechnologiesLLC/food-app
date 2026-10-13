@@ -1,21 +1,24 @@
-import { Schema, model, Types } from "mongoose";
+import { Schema, model, Types, type InferSchemaType } from "mongoose";
+
+import { PANTRY_CATEGORIES } from "../domain/pantry.js";
 
 const ingredientSchema = new Schema(
-  { name: String, quantity: Number, unit: String, fromPantry: Boolean },
+  { name: { type: String, required: true }, quantity: { type: Number, required: true, min: Number.MIN_VALUE }, unit: { type: String, required: true }, fromPantry: { type: Boolean, required: true } },
   { _id: false }
 );
 
 // What marking a meal as made took from the pantry, so unmarking can put it back.
-// The item's fields are kept in case the deduction used it up and it was removed.
+// Batch metadata is domain history for undo, even after the batch is exhausted.
 const consumedSchema = new Schema(
   {
-    itemId: Types.ObjectId,
-    name: String,
-    amount: Number,
-    unit: String,
-    category: String,
-    expiryDate: Date,
-    source: String,
+    ingredientKey: { type: String, required: true },
+    batchId: { type: Types.ObjectId, required: true },
+    name: { type: String, required: true },
+    amount: { type: Number, required: true, min: Number.MIN_VALUE },
+    unit: { type: String, required: true },
+    category: { type: String, enum: PANTRY_CATEGORIES, required: true },
+    expiryDate: { type: Date, default: null },
+    source: { type: String, enum: ["groceries", "receipt", "manual"], required: true },
   },
   { _id: false }
 );
@@ -31,10 +34,10 @@ const nutritionSchema = new Schema(
 
 const mealSchema = new Schema(
   {
-    type: { type: String, enum: ["breakfast", "lunch", "dinner", "snack"] },
-    title: String,
-    description: String,
-    prepMinutes: Number,
+    type: { type: String, enum: ["breakfast", "lunch", "dinner", "snack"], required: true },
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    prepMinutes: { type: Number, required: true, min: 0 },
     calories: { type: Number, required: true, min: 0, validate: Number.isInteger },
     nutrition: { type: nutritionSchema, required: true },
     ingredients: [ingredientSchema],
@@ -47,26 +50,29 @@ const mealSchema = new Schema(
   { _id: false }
 );
 
-const shoppingItemSchema = new Schema({
-  name: String,
-  quantity: Number,
-  unit: String,
-  checked: { type: Boolean, default: false },
-  stocked: { type: Boolean, default: false },
-});
-
 const mealPlanSchema = new Schema(
   {
     userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
-    title: String,
+    title: { type: String, required: true },
     // draft = generated but not added yet; a user has at most one active plan
     status: { type: String, enum: ["draft", "active"], default: "draft", index: true },
     startDate: Date,
-    days: [{ day: Number, meals: [mealSchema] }],
-    shoppingList: [shoppingItemSchema],
-    settingsSnapshot: Schema.Types.Mixed,
+    days: [{ day: { type: Number, required: true, min: 1 }, meals: [mealSchema] }],
+    settingsSnapshot: { type: new Schema({
+      diet: { type: String, required: true },
+      allergies: { type: [String], required: true },
+      goal: { type: String, required: true },
+      budget: { type: String, required: true },
+      heightCm: { type: Number, default: null },
+      weightKg: { type: Number, default: null },
+      weightUpdatedAt: { type: Date, default: null },
+      mealTypes: { type: [String], required: true },
+      maxExtraItems: { type: Number, default: null },
+    }, { _id: false }), required: true },
   },
-  { timestamps: true }
+  { timestamps: true, optimisticConcurrency: true }
 );
 
 export const MealPlan = model("MealPlan", mealPlanSchema);
+
+export type PlanData = InferSchemaType<typeof mealPlanSchema>;

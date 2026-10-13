@@ -27,7 +27,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, options: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
   const isForm = options.body instanceof FormData;
   const res = await fetch(`${BASE_URL}${path}`, {
     method: options.method ?? 'GET',
@@ -35,6 +35,7 @@ export async function api<T>(path: string, options: { method?: string; body?: un
       // Let fetch set the multipart boundary itself for FormData
       ...(isForm ? {} : { 'content-type': 'application/json' }),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
     },
     body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
   });

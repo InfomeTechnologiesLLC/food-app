@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { sameIngredient, isAvailable, extraIngredients, findAllergens } from "../src/lib/ingredients.js";
 import { annotateReadiness } from "../src/lib/readiness.js";
 import { buildShoppingList } from "../src/lib/shopping.js";
-import { consumeIngredients, previewConsumption } from "../src/lib/consume.js";
-import { PantryItem } from "../src/models/PantryItem.js";
+import { planConsumption } from "../src/lib/consume.js";
+import { Types } from "mongoose";
 
 test("plant milk exceptions preserve tree nut and soy warnings", () => {
   const allergies = ["milk", "tree nuts", "soy"];
@@ -43,21 +43,16 @@ test("rice cannot make rice flour available or remove it from shopping", () => {
   assert.equal(isAvailable(flour.name, ["rice"]), false);
   assert.deepEqual(extraIngredients(meals, ["rice"]), ["rice flour"]);
   assert.deepEqual(buildShoppingList(meals, pantry), [flour]);
-  const plan = { days: [{ day: 1, meals }], shoppingList: [] };
+  const plan = { days: [{ day: 1, meals }] };
   assert.equal(annotateReadiness(plan, pantry).readyMeals, 0);
   assert.equal(annotateReadiness(plan, [flour]).readyMeals, 1);
 });
 
-test("cooking rice flour neither deducts nor deletes pantry rice", async (t) => {
-  const rice = { _id: "rice-id", name: "rice", quantity: 100, unit: "g" };
-  t.mock.method(PantryItem, "find", () => ({ sort: () => ({ lean: async () => [rice] }) }));
-  const update = t.mock.method(PantryItem, "updateOne", async () => { throw new Error("Unexpected pantry update"); });
-  const remove = t.mock.method(PantryItem, "deleteOne", async () => { throw new Error("Unexpected pantry deletion"); });
-  const ingredients = [{ name: "rice flour", quantity: 100, unit: "g" }];
-  assert.deepEqual(await previewConsumption("user-id", ingredients), [
-    { name: "rice flour", needed: 100, unit: "g", have: 0, unitMismatch: false },
-  ]);
-  assert.deepEqual(await consumeIngredients("user-id", ingredients), []);
-  assert.equal(update.mock.callCount(), 0);
-  assert.equal(remove.mock.callCount(), 0);
+test("cooking rice flour neither deducts nor deletes pantry rice", () => {
+  const rice = { _id: new Types.ObjectId(), userId: new Types.ObjectId(), key: "rice", name: "rice", category: "grains" as const,
+    batches: [{ _id: new Types.ObjectId(), quantity: 100, unit: "g", expiryDate: null, source: "manual" as const }] };
+  const plan = planConsumption([rice], [{ name: "rice flour", quantity: 100, unit: "g" }]);
+  assert.deepEqual(plan.shortages, [{ name: "rice flour", quantity: 100, unit: "g", have: 0, shortage: 100, unitMismatch: false, incompatibleStock: [] }]);
+  assert.deepEqual(plan.deductions, []);
+  assert.deepEqual(plan.remaining, [rice]);
 });

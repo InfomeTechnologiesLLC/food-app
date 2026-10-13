@@ -29,17 +29,30 @@ export const CATEGORIES = [
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
-export interface PantryItem {
+export interface PantryBatch {
   _id: string;
+  quantity: number;
+  unit: string;
+  expiryDate: string | null;
+  source: 'groceries' | 'receipt' | 'manual';
+}
+export interface PantryIngredient {
+  _id: string;
+  key: string;
+  name: string;
+  category: Category;
+  expiryDate: string | null;
+  totals: { quantity: number; unit: string }[];
+  batches: PantryBatch[];
+}
+export interface PantryInput {
   name: string;
   quantity: number;
   unit: string;
   category: Category;
-  expiryDate?: string | null;
-  source: 'groceries' | 'receipt' | 'manual';
+  expiryDate: string | null;
+  source?: PantryBatch['source'];
 }
-
-export type PantryInput = Omit<PantryItem, '_id' | 'source'> & { source?: PantryItem['source'] };
 
 export type ScanType = 'groceries' | 'receipt';
 
@@ -69,8 +82,8 @@ export interface Meal {
   calories: number;
   /** Estimated grams for one person; ingredient quantities cover one serving. */
   nutrition: { proteinGrams: number; carbsGrams: number; fatGrams: number };
-  /** `available` = in your pantry now, a basic staple, or ticked as bought on this plan's list */
-  ingredients: { name: string; quantity: number; unit: string; fromPantry: boolean; available: boolean }[];
+  /** Availability uses current stock; checkmarks alone never count as stock. */
+  ingredients: { name: string; quantity: number; unit: string; fromPantry: boolean; available: boolean; have: number; shortage: number; unitMismatch: boolean; incompatibleStock: { quantity: number; unit: string }[] }[];
   steps: string[];
   allergyWarnings: string[];
   missing: string[];
@@ -82,7 +95,9 @@ export interface Meal {
 /** An ingredient the pantry can't fully cover when marking a meal as made. */
 export interface Shortage {
   name: string;
-  needed: number;
+  quantity: number;
+  shortage: number;
+  incompatibleStock: { name: string; quantity: number; unit: string }[];
   unit: string;
   have: number;
   unitMismatch: boolean;
@@ -96,7 +111,6 @@ export interface ShoppingItem {
   name: string;
   quantity: number;
   unit: string;
-  checked: boolean;
 }
 
 export interface MealPlan {
@@ -120,7 +134,6 @@ export interface MealPlanSummary {
   createdAt: string;
   dayCount: number;
   shoppingTotal: number;
-  shoppingChecked: number;
   maxExtraItems: number | null;
   readyMeals: number;
   totalMeals: number;

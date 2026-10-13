@@ -1,114 +1,76 @@
-import type { Types } from "mongoose";
-import { PantryItem, PANTRY_CATEGORIES } from "../models/PantryItem.js";
+import type { ClientSession, Types } from "mongoose";
+import { PantryIngredient } from "../models/PantryIngredient.js";
+import type { IngredientStock, PantryCategory, StockSource } from "../domain/pantry.js";
 import { isStaple, sameIngredient } from "./ingredients.js";
 import { convert } from "./units.js";
-
-interface Ingredient { name: string; quantity: number; unit: string }
+import { readPantry } from "./pantry.js";
+import type { StockItem } from "./stock.js";
 
 export interface Consumed {
-  itemId: Types.ObjectId;
-  name: string;
-  amount: number;
-  unit: string;
-  category?: string | null;
-  expiryDate?: Date | null;
-  source?: string | null;
+  ingredientKey: string; batchId: Types.ObjectId; name: string; category: PantryCategory;
+  amount: number; unit: string; expiryDate: Date | null; source: StockSource;
 }
-
-/** A recipe ingredient the pantry can't fully cover. */
 export interface Shortage {
-  name: string;
-  needed: number;
-  unit: string;
-  /** Usable amount in the recipe's unit (0 when the item isn't in the pantry). */
-  have: number;
-  /** In the pantry, but in a unit we can't convert (e.g. pcs vs g), so it's left unchanged. */
-  unitMismatch: boolean;
+  name: string; quantity: number; unit: string; have: number; shortage: number; unitMismatch: boolean; incompatibleStock: StockItem[];
 }
+const precise = (value: number) => Number(value.toPrecision(12));
 
-const round = (n: number) => Math.round(n * 100) / 100;
-
-/**
- * Works out what cooking these ingredients takes from the pantry. Matching items are used
- * soonest-expiring first; staples are skipped. Nothing is written.
- */
-async function planDeduction(userId: string, ingredients: Ingredient[]) {
-  const pantry = await PantryItem.find({ userId }).sort({ expiryDate: 1 }).lean();
-  // Items without an expiry go last
-  pantry.sort((a, b) => (a.expiryDate ? 0 : 1) - (b.expiryDate ? 0 : 1));
-  const left = new Map(pantry.map((p) => [String(p._id), p.quantity ?? 0]));
-
+/** Pure deduction plan: batches remain attached to their ingredient identity. */
+export function planConsumption(pantry: IngredientStock[], ingredients: StockItem[]) {
+  const remaining = pantry.map((ingredient) => ({ ...ingredient, batches: ingredient.batches.map((batch) => ({ ...batch })) }));
+  const stock = remaining.flatMap((ingredient) => ingredient.batches.map((batch) => ({ ingredient, batch })))
+    .sort((a, b) => (a.batch.expiryDate?.getTime() ?? Infinity) - (b.batch.expiryDate?.getTime() ?? Infinity));
   const deductions: Consumed[] = [];
   const shortages: Shortage[] = [];
-
-  for (const ing of ingredients) {
-    if (isStaple(ing.name)) continue;
-    const matches = pantry.filter((p) => sameIngredient(p.name, ing.name));
-    let needed = ing.quantity;
-    let mismatched = matches.length > 0;
-
-    for (const p of matches) {
-      if (needed <= 0) break;
-      const available = left.get(String(p._id))!;
-      const availableInRecipeUnit = convert(available, p.unit ?? "", ing.unit);
-      if (availableInRecipeUnit == null || available <= 0) continue;
-      mismatched = false;
-      const take = Math.min(needed, availableInRecipeUnit);
-      const takeInPantryUnit = convert(take, ing.unit, p.unit ?? "")!;
-      left.set(String(p._id), available - takeInPantryUnit);
+  for (const ingredient of ingredients) {
+    if (isStaple(ingredient.name)) continue;
+    let needed = ingredient.quantity;
+    const matches = stock.filter((row) => sameIngredient(row.ingredient.key, ingredient.name) && row.batch.quantity > 0);
+    const incompatibleStock = matches.filter((row) => convert(row.batch.quantity, row.batch.unit, ingredient.unit) === null).map((row) => ({ name: row.ingredient.name, quantity: row.batch.quantity, unit: row.batch.unit }));
+    const unitMismatch = incompatibleStock.length > 0;
+    for (const { ingredient: owner, batch } of matches) {
+      if (needed <= 1e-6) break;
+      const available = convert(batch.quantity, batch.unit, ingredient.unit);
+      if (available === null) continue;
+      const take = Math.min(needed, available);
+      const amount = convert(take, ingredient.unit, batch.unit)!;
+      batch.quantity = precise(batch.quantity - amount);
       needed -= take;
-      deductions.push({
-        itemId: p._id,
-        name: p.name,
-        amount: takeInPantryUnit,
-        unit: p.unit ?? "",
-        category: p.category,
-        expiryDate: p.expiryDate,
-        source: p.source,
-      });
+      deductions.push({ ingredientKey: owner.key, batchId: batch._id, name: owner.name, category: owner.category,
+        amount: precise(amount), unit: batch.unit, expiryDate: batch.expiryDate, source: batch.source });
     }
-
-    if (needed > 1e-6) {
-      shortages.push({ name: ing.name, needed: round(ing.quantity), unit: ing.unit, have: round(ing.quantity - needed), unitMismatch: mismatched });
-    }
+    if (needed > 1e-6) shortages.push({ name: ingredient.name, quantity: ingredient.quantity, unit: ingredient.unit,
+      have: precise(ingredient.quantity - needed), shortage: precise(needed), unitMismatch, incompatibleStock });
   }
-  return { deductions, shortages, left };
+  return { deductions, shortages, remaining: remaining.map((ingredient) => ({ ...ingredient, batches: ingredient.batches.filter((batch) => batch.quantity > 1e-6) })) };
 }
 
-export async function previewConsumption(userId: string, ingredients: Ingredient[]) {
-  return (await planDeduction(userId, ingredients)).shortages;
+export class PantryShortage extends Error {
+  constructor(public shortages: Shortage[]) { super("Not enough in your pantry"); }
+}
+export async function consumeIngredients(userId: string, ingredients: StockItem[], session: ClientSession, confirm = false) {
+  const plan = planConsumption(await readPantry(userId, session), ingredients);
+  if (plan.shortages.length && !confirm) throw new PantryShortage(plan.shortages);
+  const touched = new Set(plan.deductions.map((deduction) => deduction.ingredientKey));
+  for (const ingredient of plan.remaining.filter((item) => touched.has(item.key))) {
+    if (ingredient.batches.length) await PantryIngredient.updateOne({ _id: ingredient._id, userId }, { $set: { batches: ingredient.batches } }, { session, runValidators: true });
+    else await PantryIngredient.deleteOne({ _id: ingredient._id, userId }, { session });
+  }
+  return plan.deductions;
 }
 
-/** Takes the ingredients out of the pantry. Items that reach zero are removed. */
-export async function consumeIngredients(userId: string, ingredients: Ingredient[]) {
-  const { deductions, left } = await planDeduction(userId, ingredients);
-  const ids = [...new Set(deductions.map((d) => String(d.itemId)))];
-  await Promise.all(
-    ids.map((id) => {
-      const remaining = left.get(id)!;
-      return remaining <= 1e-6
-        ? PantryItem.deleteOne({ _id: id, userId })
-        : PantryItem.updateOne({ _id: id, userId }, { $set: { quantity: round(remaining) } });
-    })
-  );
-  return deductions.map((d) => ({ ...d, amount: round(d.amount) }));
-}
-
-/** Puts back what consumeIngredients took, recreating items that were used up. */
-export async function restoreIngredients(userId: string, consumed: Consumed[]) {
-  for (const c of consumed) {
-    const updated = await PantryItem.updateOne({ _id: c.itemId, userId }, { $inc: { quantity: c.amount } });
-    if (!updated.matchedCount) {
-      await PantryItem.create({
-        _id: c.itemId,
-        userId,
-        name: c.name,
-        quantity: c.amount,
-        unit: c.unit,
-        category: (c.category ?? undefined) as (typeof PANTRY_CATEGORIES)[number] | undefined,
-        expiryDate: c.expiryDate ?? undefined,
-        source: (c.source ?? undefined) as "groceries" | "receipt" | "manual" | undefined,
-      });
+/** Undo restores domain history, including exhausted batches, in the meal transaction. */
+export async function restoreIngredients(userId: string, consumed: Consumed[], session: ClientSession) {
+  for (const item of consumed) {
+    const ingredient = await PantryIngredient.findOne({ userId, key: item.ingredientKey }).session(session);
+    if (!ingredient) {
+      await PantryIngredient.create([{ userId, key: item.ingredientKey, name: item.name, category: item.category,
+        batches: [{ _id: item.batchId, quantity: item.amount, unit: item.unit, expiryDate: item.expiryDate, source: item.source }] }], { session });
+    } else {
+      const batch = ingredient.batches.find((batch) => String(batch._id) === String(item.batchId));
+      if (batch) batch.quantity = precise(batch.quantity + item.amount);
+      else ingredient.batches.push({ _id: item.batchId, quantity: item.amount, unit: item.unit, expiryDate: item.expiryDate, source: item.source });
+      await ingredient.save({ session });
     }
   }
 }

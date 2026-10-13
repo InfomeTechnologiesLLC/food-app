@@ -7,8 +7,8 @@ export type MealType = (typeof MEAL_TYPES)[number];
 
 const ingredientSchema = z.object({
   name: z.string().describe("Generic ingredient name, lowercase, singular"),
-  quantity: z.number().describe("Amount needed for one person"),
-  unit: z.string(),
+  quantity: z.number().positive().describe("Amount needed for one person"),
+  unit: z.string().trim().min(1),
   fromPantry: z.boolean().describe("true if this comes from the user's pantry list or is a basic staple"),
 });
 
@@ -80,7 +80,7 @@ ${maxExtraItems === 0 ? "" : `- Budget: ${prefs.budget}\n`}- Every meal serves e
 ${prefs.heightCm ? `- Height: ${prefs.heightCm} cm\n` : ""}${prefs.weightKg ? `- Current weight: ${prefs.weightKg} kg\n` : ""}
 
 RULES:
-1. Build meals around what's in the pantry. Use items that expire soonest in the earliest days.
+1. Build meals around what's in the pantry. Use items that expire soonest in the earliest days. Repeated pantry names are purchase batches: add their compatible quantities, do not treat them as different ingredients. Use the pantry ingredient's exact name and a compatible unit in recipes (pcs with pcs, g/kg with g/kg, ml/L with ml/L); never invent a weight-per-piece or mass-to-volume conversion. Quantities in the pantry are finite and shared across all meals.
 2. ${shoppingRule(maxExtraItems, days)}
 3. Variety matters: never repeat a dish, rotate proteins, cooking methods and cuisines, and don't serve the same main ingredient at every meal of a day.
 4. Assume these staples are always available and mark them fromPantry=true: ${STAPLES.join(", ")}.
