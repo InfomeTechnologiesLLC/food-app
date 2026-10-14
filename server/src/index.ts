@@ -13,12 +13,18 @@ import planRoutes from "./routes/plans.js";
 import exerciseRoutes from "./routes/exercise.js";
 import historyRoutes from "./routes/history.js";
 import { ScheduleConflict } from "./lib/schedule.js";
+import adminRoutes from "./routes/admin.js";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { mountAdminFrontend } from "./lib/admin-frontend.js";
 
 const app = express();
 app.set("trust proxy", 1); // behind Render/Railway's proxy, so rate limiting sees real client IPs
 app.disable("x-powered-by");
 app.use(cors());
+app.use("/admin-api", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
 app.use(express.json({ limit: "1mb" }));
+app.use("/admin-api", adminRoutes);
 
 app.get("/health", (_req, res) => res.json({ ok: true, db: mongoose.connection.readyState === 1 }));
 app.use("/auth", authRoutes);
@@ -28,6 +34,9 @@ app.use("/scans", scanRoutes);
 app.use("/plans", planRoutes);
 app.use("/food-history", historyRoutes);
 app.use("/exercise", exerciseRoutes);
+
+const adminDist = resolve(dirname(fileURLToPath(import.meta.url)), "../../admin/dist");
+if (env.NODE_ENV === "production") mountAdminFrontend(app, adminDist);
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 

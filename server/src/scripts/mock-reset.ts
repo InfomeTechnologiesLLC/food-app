@@ -1,6 +1,8 @@
 import mongoose, { type ClientSession } from 'mongoose';
 import { User } from '../models/User.js';
 
+export const isMockDataCollection = (name: string) => !name.startsWith('system.') && name !== User.collection.name && name !== 'adminaccounts' && name !== 'adminsessions';
+
 /** Development fixtures have one account. Retain only its login identity. */
 export async function mockResetTarget(email?: string) {
   if (process.env.NODE_ENV !== 'development') throw new Error('Mock reset requires NODE_ENV=development.');
@@ -8,7 +10,7 @@ export async function mockResetTarget(email?: string) {
   if (accounts.length !== 1) throw new Error('Mock reset requires exactly one account.');
   const account = accounts[0];
   if (email && account.email !== email.toLowerCase()) throw new Error('Account does not match --user.');
-  const collections = (await mongoose.connection.db!.listCollections().toArray()).map(c => c.name).filter(name => !name.startsWith('system.') && name !== User.collection.name);
+  const collections = (await mongoose.connection.db!.listCollections().toArray()).map(c => c.name).filter(isMockDataCollection);
   return { account, collections };
 }
 export async function resetMockAccount(target: Awaited<ReturnType<typeof mockResetTarget>>, session: ClientSession) {

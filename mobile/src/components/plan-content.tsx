@@ -66,8 +66,6 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
 
   return (
     <View style={{ gap: Spacing.three }}>
-      <ThemedText type="smallBold">{plan.title}</ThemedText>
-
       <ChipGroup<Tab>
         options={['meals', 'allMeals', 'shopping']}
         value={tab}
