@@ -79,7 +79,7 @@ test('sessions retain library snapshots and survive source plan deletion', async
   session.exercises[0].sets[0].status = 'completed'; session.status = 'finished'; session.finishedAt = session.startedAt as any;
   await invoke('/sessions/:id', 'put', { params: { id }, body: { baseRevision: 0, operationId: randomUUID(), session } });
   await invoke('/plans/:id', 'delete', { params: { id: String(plan._id) } });
-  const stored = await WorkoutSession.findById(id); assert.equal(stored!.status, 'finished'); assert.equal(stored!.exercises[0].definition.name, 'Walking');
+  const stored = await WorkoutSession.findById(id); assert.equal(stored!.status, 'in_progress'); assert.equal(stored!.exercises[0].definition.name, 'Walking');
   assert.equal((await invoke('/sessions', 'get', { query: {} })).data.entries.length, 1);
 });
 test('sessions and plans cannot expose or overwrite another account’s data', async () => {
@@ -90,10 +90,9 @@ test('sessions and plans cannot expose or overwrite another account’s data', a
   assert.equal((await invoke('/plans/:id', 'patch', { userId: otherId, params: { id: String(plan._id) }, body: { ...generated(), revision: 0 } })).status, 404);
   assert.equal((await invoke('/sessions', 'get', { userId: otherId, query: {} })).data.entries.length, 0);
 });
-test('session history is paginated and discards are excluded', async () => {
+test('session history is paginated', async () => {
   for (let i = 0; i < 3; i++) await invoke('/sessions/:id', 'put', { params: { id: randomUUID() }, body: { baseRevision: 0, operationId: randomUUID(), session: payload() } });
   const first = await invoke('/sessions', 'get', { query: { limit: 2 } }); assert.equal(first.data.entries.length, 2); assert.ok(first.data.nextCursor);
   const last = await invoke('/sessions', 'get', { query: { limit: 2, cursor: first.data.nextCursor } }); assert.equal(last.data.entries.length, 1); assert.equal(last.data.nextCursor, null);
-  const id = randomUUID(); const session = payload(); await invoke('/sessions/:id', 'put', { params: { id }, body: { baseRevision: 0, operationId: randomUUID(), session: { ...session, status: 'discarded', finishedAt: session.startedAt } } });
   assert.equal((await invoke('/sessions', 'get', { query: {} })).data.entries.length, 3);
 });

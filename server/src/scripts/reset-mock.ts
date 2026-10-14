@@ -1,21 +1,14 @@
-import "dotenv/config";
-import mongoose from "mongoose";
-import { MealPlan } from "../models/MealPlan.js";
-import { FoodHistory } from "../models/FoodHistory.js";
-import { PantryIngredient } from "../models/PantryIngredient.js";
-import { StockOperation } from "../models/StockOperation.js";
-import { WorkoutPlan, WorkoutSession } from "../models/Workout.js";
-import { Scan } from "../models/Scan.js";
-if (process.env.NODE_ENV !== "development" || !process.argv.includes("--confirm")) {
-  throw new Error("Mock reset requires NODE_ENV=development and --confirm. Accounts and preferences are preserved.");
+import 'dotenv/config';
+import mongoose from 'mongoose';
+import { mockResetTarget, resetMockAccount, dropRetiredCollections } from './mock-reset.js';
+if (process.env.NODE_ENV !== 'development' || !process.argv.includes('--confirm')) {
+  throw new Error('Mock reset requires NODE_ENV=development and --confirm. Only account ID, email and password hash are preserved.');
 }
-if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required");
-await mongoose.connect(process.env.MONGODB_URI);
+if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is required');
+await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
 try {
-  await mongoose.connection.transaction(async (session) => {
-    for (const collection of [MealPlan, FoodHistory, PantryIngredient, StockOperation, Scan, WorkoutPlan, WorkoutSession]) {
-      await collection.collection.deleteMany({}, { session });
-    }
-  });
-  console.log(`Cleared mock schedules, food history, pantry, purchases, scans, and workouts in ${mongoose.connection.name}. Accounts and preferences preserved.`);
+  const target = await mockResetTarget();
+  await mongoose.connection.transaction(session => resetMockAccount(target, session));
+  await dropRetiredCollections();
+  console.log('Cleared all mock data and reset account defaults. Login identity preserved.');
 } finally { await mongoose.disconnect(); }

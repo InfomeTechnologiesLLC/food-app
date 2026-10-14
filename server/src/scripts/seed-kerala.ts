@@ -1,4 +1,9 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
+import { mockResetTarget, resetMockAccount, dropRetiredCollections } from "./mock-reset.js";
+import { WorkoutPlan, WorkoutSession } from "../models/Workout.js";
+import { DEFAULT_TRAINING, exerciseById, validateWorkout, workoutOutputSchema, sessionPayloadSchema } from "../domain/exercise.js";
+import { consumeIngredients } from "../lib/consume.js";
 import mongoose from "mongoose";
 import { User } from "../models/User.js";
 import { MealPlan } from "../models/MealPlan.js";
@@ -6,7 +11,6 @@ import { FoodHistory } from "../models/FoodHistory.js";
 import { PantryIngredient } from "../models/PantryIngredient.js";
 import { StockOperation } from "../models/StockOperation.js";
 import { addStockInSession } from "../lib/add-stock.js";
-import { scheduleTransaction } from "../lib/schedule.js";
 import { addDays, calendarToday, timezoneSchema } from "../lib/calendar.js";
 import { readPantry, pantryStock } from "../lib/pantry.js";
 import { annotateReadiness } from "../lib/readiness.js";
@@ -19,7 +23,9 @@ const option = (name: string) => {
   return index < 0 ? undefined : process.argv[index + 1];
 };
 const email = option("--user");
-if (!email) throw new Error("Specify --user <account-email>. Existing accounts and preferences are preserved.");
+const reset = process.argv.includes("--reset");
+if (reset && !process.argv.includes("--confirm")) throw new Error("--reset requires --confirm; only account ID, email and password hash are preserved.");
+if (!reset && !email) throw new Error("Specify --user <account-email>, or --reset --confirm for the single mock account.");
 const timezone = timezoneSchema.parse(option("--timezone") ?? "Asia/Kolkata");
 const today = calendarToday(timezone);
 const startDate = addDays(today, -1);
@@ -78,22 +84,60 @@ const pantry = [
 if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required");
 await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
 try {
-  const user = await User.findOne({ email: email.toLowerCase() });
-  if (!user) throw new Error("Account not found. Create your account in the app first.");
-  if (user.preferences?.diet === "vegan") throw new Error("These vegetarian fixtures include yogurt; use a vegetarian test account.");
-  const result = await scheduleTransaction(user.id, async (session) => {
-    if (await StockOperation.exists({ userId: user._id, key }).session(session)) return "already seeded";
-    for (const collection of [MealPlan, FoodHistory, PantryIngredient, StockOperation]) {
-      if (await collection.collection.countDocuments({ userId: user._id }, { session })) throw new Error("This account already has domain data. Seed only a freshly reset test account.");
+  await Promise.all(mongoose.modelNames().map(name => mongoose.model(name).init()));
+  const target = reset ? await mockResetTarget(email) : null;
+  const existing = target ? null : await User.findOne({ email: email!.toLowerCase() });
+  if (!target && !existing) throw new Error("Account not found.");
+  const accountId = String(target?.account._id ?? existing!._id);
+  const training = { ...DEFAULT_TRAINING, enabled: true, equipment: ['dumbbells'] as ['dumbbells'] };
+  const body = { heightCm: 170, weightKg: 68, weightUpdatedAt: new Date() };
+  const workout = workoutOutputSchema.parse({ title: 'A manageable week · Kerala mock profile', days: Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(startDate, index);
+    const train = training.weekdays.includes(new Date(`${date}T00:00:00Z`).getUTCDay());
+    return { date, title: train ? 'Full body strength' : 'Rest and easy movement', explanation: train ? 'Two controlled sets per movement, with comfortable effort.' : 'Rest day; an easy walk is optional.',
+      exercises: train ? ['goblet-squat', 'dumbbell-floor-press', 'dumbbell-row', 'dead-bug'].map(exerciseId => ({ exerciseId, sets: 2, repsMin: 8, repsMax: 10, durationSeconds: null, restSeconds: 60 })) : [] };
+  }) });
+  const context = { startDate, timezone, training, body, recentSessions: [] };
+  const errors = validateWorkout(workout, context);
+  if (errors.length) throw new Error(errors.join('; '));
+  const result = await mongoose.connection.transaction(async session => {
+    const user = target ? await resetMockAccount(target, session) : existing!;
+    if (await StockOperation.exists({ userId: user._id, key }).session(session)) return 'already seeded';
+    for (const collection of [MealPlan, FoodHistory, PantryIngredient, StockOperation, WorkoutPlan, WorkoutSession]) {
+      if (await collection.collection.countDocuments({ userId: user._id }, { session })) throw new Error('This account already has data. Use --reset --confirm to replace mock data.');
     }
+    user.set({ preferences: { diet: 'vegetarian', allergies: [], goal: 'balanced', budget: 'medium' }, body, training, onboarded: true });
+    await user.save({ session });
     await addStockInSession(user.id, key, pantry, session);
-    const settingsSnapshot = { ...user.toObject().preferences!, body: user.toObject().body, mealTypes: ["breakfast", "lunch", "dinner"], maxExtraItems: 5 };
-    await MealPlan.create([{
-      userId: user._id, title: "Kerala home kitchen · 3-day mock plan", status: "active", startDate, settingsSnapshot,
-      days: [[puttu, thoran, dosa], [appam, avial, idiyappam], [idli, upma, kanji]].map((meals, index) => ({ day: index + 1, date: addDays(startDate, index), meals })),
+    const [trainingPlan] = await WorkoutPlan.create([{ userId: user._id, ...workout, context, status: 'active' }], { session });
+    const trainingContext = { goal: training.goal, days: workout.days.map(d => ({ date: d.date, title: d.title, exercises: d.exercises.map(e => ({ exerciseId: e.exerciseId, sets: e.sets, durationSeconds: e.durationSeconds })) })) };
+    const settingsSnapshot = { ...user.toObject().preferences!, body, trainingContext, mealTypes: ['breakfast', 'lunch', 'dinner'], maxExtraItems: 5 };
+    const menus = [[puttu, thoran, dosa], [appam, avial, idiyappam], [idli, upma, kanji]];
+    const [plan] = await MealPlan.create([{
+      userId: user._id, title: 'Kerala home kitchen · 7-day mock plan', status: 'active', startDate, settingsSnapshot,
+      days: Array.from({ length: 7 }, (_, index) => ({ day: index + 1, date: addDays(startDate, index), meals: menus[index % menus.length] })),
     }], { session, ordered: true });
-    return "seeded";
+    // History and stock deductions commit together, so undo works on these fixtures.
+    for (const eatenMeal of plan.days[0].meals) {
+      const consumed = await consumeIngredients(user.id, eatenMeal.ingredients.map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit })), session);
+      eatenMeal.eaten = true;
+      eatenMeal.historyEntryId = new mongoose.Types.ObjectId();
+      await FoodHistory.create([{ _id: eatenMeal.historyEntryId, userId: user._id, mealId: eatenMeal._id, sourcePlanId: plan._id, sourcePlanTitle: plan.title,
+        date: startDate, recordedAt: new Date(`${startDate}T14:00:00+05:30`), meal: eatenMeal.toObject(), consumed }], { session });
+    }
+    await plan.save({ session });
+    for (const offset of [-3, -1]) {
+      const date = addDays(today, offset);
+      const payload = sessionPayloadSchema.parse({ planId: trainingPlan.id, scheduledDate: date, date, timezone, title: 'Full body strength', startedAt: `${date}T12:00:00.000Z`, finishedAt: `${date}T12:20:00.000Z`, status: 'finished', notes: 'Comfortable mock strength workout.', feedback: 'right',
+        exercises: ['goblet-squat', 'dumbbell-floor-press', 'dumbbell-row', 'dead-bug'].map(exerciseId => ({ exerciseId, restSeconds: 60, sets: Array.from({ length: 2 }, () => ({ reps: 8, weightKg: null, durationSeconds: null, distanceKm: null, status: 'completed' })) })) });
+      await WorkoutSession.create([{ _id: randomUUID(), userId: user._id, revision: 1, operationId: randomUUID(), ...payload,
+        exercises: payload.exercises.map(e => ({ ...e, definition: exerciseById(e.exerciseId) })) }], { session });
+    }
+    return 'seeded';
   });
+  if (reset) await dropRetiredCollections();
+  const user = await User.findById(accountId);
+  if (!user) throw new Error('Seeded account is missing');
   const active = await MealPlan.findOne({ userId: user._id, status: "active" }).lean();
   const stock = await pantryStock(user.id);
   const ready = active ? annotateReadiness(active, stock) : null;
@@ -101,6 +145,9 @@ try {
     pantryItems: (await readPantry(user.id)).length, pantryBatches: (await readPantry(user.id)).reduce((count, item) => count + item.batches.length, 0),
     activeMeals: ready?.totalMeals, readyMeals: ready?.readyMeals, shopping: active ? buildShoppingList(active.days.flatMap((day) => day.meals), stock) : [],
     historyEntries: await FoodHistory.countDocuments({ userId: user._id }),
+    workoutPlans: await WorkoutPlan.countDocuments({ userId: user._id }),
+    workoutHistory: await WorkoutSession.countDocuments({ userId: user._id }),
+    credentialsPreserved: target ? user.email === target.account.email && user.passwordHash === target.account.passwordHash : true,
     usage: (await User.findById(user._id).lean())?.usage,
   }, null, 2));
 } finally { await mongoose.disconnect(); }

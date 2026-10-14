@@ -29,7 +29,7 @@ export default function TrainingPlanScreen() {
   };
   const startDay = (day: WorkoutDay) => { try { const sessionId = start(day, library.data ?? [], plan._id); router.push({ pathname: '/workout/[id]', params: { id: sessionId } }); } catch (e) { setError((e as Error).message); } };
   return <Screen edges={['bottom']}>
-    <ThemedText type="subtitle">{plan.status === 'draft' ? 'Review your AI draft' : 'Workout schedule'}</ThemedText>
+    {plan.status === 'draft' && <ThemedText type="subtitle">Review your AI draft</ThemedText>}
     <Input label="Plan title" value={plan.title} onChangeText={title => setEdited({ ...plan, title })} />
     <ThemedText type="small" themeColor="textSecondary">Plans include preparation time. Choose comfortable working weights during your workout. Stop a movement if it causes pain.</ThemedText>
     {!!error && <ThemedText themeColor="danger">{error}</ThemedText>}

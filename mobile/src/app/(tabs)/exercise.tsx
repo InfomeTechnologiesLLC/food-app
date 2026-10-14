@@ -1,71 +1,57 @@
 import { useState } from 'react';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { WorkoutTracker } from '@/components/workout-tracker';
+import { BottomSheet } from '@/components/bottom-sheet';
+import { useCalendarDate } from '@/hooks/use-calendar-date';
 import { FloatingActions } from '@/components/floating-actions';
 import { useQueryClient } from '@tanstack/react-query';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
-import { Button, Input, humanize } from '@/components/ui';
+import { Button, Input } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { useExercise, useWorkoutPlans, useExerciseLibrary } from '@/lib/exercise';
+import { useExercise, useWorkoutPlans } from '@/lib/exercise';
 import { api } from '@/lib/api';
 import { localDate, timezone } from '@/lib/plans';
-import { weeklyWorkoutTotals } from '@/lib/workout-sync';
+import { dailyWorkoutSession } from '@/lib/workout-tracking';
 import type { WorkoutPlan } from '@/lib/exercise-types';
 import { useTheme } from '@/hooks/use-theme';
 export default function ExerciseScreen() {
-  const { user, needsSignIn } = useAuth(); const plans = useWorkoutPlans(); const library = useExerciseLibrary();
-  const { sessions, start, sync, syncing } = useExercise(); const qc = useQueryClient(); const theme = useTheme();
+  const { user, needsSignIn } = useAuth(); const plans = useWorkoutPlans();
+  const { sessions } = useExercise(); const qc = useQueryClient(); const theme = useTheme();
   const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [startDate, setStartDate] = useState(localDate());
-  const today = localDate(); const weekStart = new Date(`${today}T12:00:00`); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
-  const startDay = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
-  const totals = weeklyWorkoutTotals(sessions.map(r => r.session), startDay, today);
-  const pending = sessions.filter(s => s.pending).length;
+  const today = useCalendarDate();
+  const { height } = useWindowDimensions();
+  const [generationOpen, setGenerationOpen] = useState(false);
+  const openGeneration = () => { setStartDate(today); setError(''); setGenerationOpen(true); };
+  const active = plans.data?.find(p => p.status === 'active');
+  const schedule = active ?? plans.data?.find(p => p.status === 'draft');
+  const day = active?.days.find(d => d.date === today);
+  const selected = dailyWorkoutSession(sessions, today, active?._id);
+  const row = selected;
   const generate = async () => {
     setBusy(true); setError('');
-    try { const plan = await api<WorkoutPlan>('/exercise/plans', { method: 'POST', body: { timezone: timezone(), startDate } }); await qc.invalidateQueries({ queryKey: ['exercise', user?._id, 'plans'] }); router.push({ pathname: '/training-plan/[id]', params: { id: plan._id } }); }
+    try { const plan = await api<WorkoutPlan>('/exercise/plans', { method: 'POST', body: { timezone: timezone(), startDate } }); await qc.invalidateQueries({ queryKey: ['exercise', user?._id, 'plans'] }); setGenerationOpen(false); router.push({ pathname: '/training-plan/[id]', params: { id: plan._id } }); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
-  const logCardio = () => {
-    try { const id = start({ date: today, title: 'Walking', explanation: 'Manually logged activity', exercises: [{ exerciseId: 'walk', sets: 1, repsMin: null, repsMax: null, durationSeconds: 600, restSeconds: 30 }] }, library.data ?? [], null); router.push({ pathname: '/workout/[id]', params: { id } }); } catch (e) { setError((e as Error).message); }
-  };
-  return <View style={styles.page}><Screen edges={['bottom']}>
-    <View style={styles.weeklySummary}>
-      <ThemedText type="smallBold">This week</ThemedText>
-      <View style={styles.metrics}>
-        {([
-          { label: 'Workouts', value: totals.workouts, icon: 'fitness-center' },
-          { label: 'Sets', value: totals.completedSets, icon: 'done-all' },
-          { label: 'Minutes', value: Math.round(totals.minutes), icon: 'timer' },
-        ] as const).map(({ label, value, icon }) => (
-          <View
-            key={label}
-            accessible
-            accessibilityLabel={`${value} ${label.toLowerCase()} ${label === 'Minutes' ? 'logged ' : ''}this week`}
-            style={[styles.metricCard, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
-            <View style={styles.metricTopRow}>
-              <MaterialIcons name={icon} size={22} color={theme.tint} />
-              <ThemedText style={styles.metricValue}>{value}</ThemedText>
-            </View>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.metricLabel}>{label}</ThemedText>
-          </View>
-        ))}
-      </View>
+  return <View style={styles.page}><Screen edges={[]}>
+    <View style={styles.todayHeader}>
+      <ThemedText type="smallBold">Today’s exercise</ThemedText>
+      {schedule && <Pressable accessibilityRole="button" accessibilityLabel={schedule.status === 'draft' ? 'Review workout draft' : 'View workout schedule'} onPress={() => router.push({ pathname: '/training-plan/[id]', params: { id: schedule._id } })} style={({ pressed }) => [styles.plansButton, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+        <MaterialIcons name="calendar-month" size={18} color={theme.tint} />
+        <ThemedText type="smallBold" themeColor="tint">{schedule.status === 'draft' ? 'Review draft' : 'View schedule'}</ThemedText>
+      </Pressable>}
     </View>
+    {row || day?.exercises.length ? <WorkoutTracker key={row?.session._id ?? `${active?._id}:${today}`} row={row} day={day} planId={active?._id} /> : <View style={[styles.todayState, { backgroundColor: theme.backgroundElement }]}>
+      <ThemedText type="smallBold">{plans.isLoading ? 'Loading today’s workout…' : plans.isError && !plans.data ? 'Couldn’t load today’s schedule' : day ? 'Rest day' : active && active.days.every(d => d.date < today) ? 'Your workout week has ended' : active ? 'No workout scheduled today' : 'Plan your next workout week'}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">{day ? day.explanation : user?.training.enabled ? 'Generate a week or review your schedule below.' : 'Enable exercise in your profile’s training preferences to create a personalized plan.'}</ThemedText>
+      {user?.training.enabled && !day && <Button title="Plan a workout week" onPress={openGeneration} />}
+    </View>}
     {needsSignIn && <Button title="Sign in again to sync" onPress={() => router.push('/reauth')} />}
-    {!!pending && <Button title={`${pending} workout${pending === 1 ? '' : 's'} waiting to sync · Retry`} variant="secondary" onPress={() => void sync()} loading={syncing} />}
-    {user?.training.enabled ? <>
-      <Input label="Week starts (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
-      <Button title="Generate workout week with AI" onPress={generate} loading={busy} disabled={needsSignIn} />
-      {busy && <ThemedText type="small" themeColor="textSecondary">Creating and checking your personalized plan…</ThemedText>}
-    </> : <ThemedText themeColor="textSecondary">Exercise is optional. Enable it in your profile’s training preferences to generate a personalized plan.</ThemedText>}
     {!!error && <ThemedText themeColor="danger">{error}</ThemedText>}
-    {plans.isLoading && <ThemedText>Loading plans…</ThemedText>}
+
     {plans.isError && <Button title="Couldn’t refresh plans · Retry" variant="secondary" onPress={() => void plans.refetch()} />}
-    {plans.data?.filter(p => p.status !== 'archived').map(p => <View key={p._id} style={{ backgroundColor: theme.backgroundElement, borderRadius: 16, padding: 16, gap: 8 }}><ThemedText type="smallBold">{p.title}</ThemedText><ThemedText type="small" themeColor="textSecondary">{humanize(p.status)} · {p.days[0]?.date} · {p.days.filter(d => d.exercises.length).length} workouts</ThemedText><Button title={p.status === 'draft' ? 'Review draft' : 'View schedule'} variant="secondary" onPress={() => router.push({ pathname: '/training-plan/[id]', params: { id: p._id } })} /></View>)}
-    <View style={styles.actionSpace} />
   </Screen>
     <FloatingActions>
       <Pressable
@@ -75,27 +61,27 @@ export default function ExerciseScreen() {
         style={({ pressed }) => [styles.actionButton, { backgroundColor: theme.tint, opacity: pressed ? 0.7 : 1 }]}>
         <MaterialIcons name="access-time" size={22} color={theme.tintText} />
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Walk"
-        accessibilityState={{ disabled: !library.data?.some(e => e.id === 'walk') }}
-        disabled={!library.data?.some(e => e.id === 'walk')}
-        onPress={logCardio}
-        style={({ pressed }) => [styles.actionButton, { backgroundColor: theme.tint, opacity: !library.data?.some(e => e.id === 'walk') ? 0.5 : pressed ? 0.7 : 1 }]}>
-        <MaterialCommunityIcons name="run" size={30} color={theme.tintText} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Generate workout plan" onPress={openGeneration} style={({ pressed }) => [styles.actionButton, { backgroundColor: theme.tint, opacity: pressed ? 0.7 : 1 }]}>
+        <MaterialIcons name="add" size={30} color={theme.tintText} />
       </Pressable>
     </FloatingActions>
+    <BottomSheet visible={generationOpen} title="Generate workout week" onClose={() => setGenerationOpen(false)}>
+      <ScrollView style={{ maxHeight: height * 0.6 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
+        {user?.training.enabled ? <>
+          <Input label="Week starts (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
+          <Button title="Generate workout week with AI" onPress={generate} loading={busy} disabled={needsSignIn} />
+          {busy && <ThemedText type="small" themeColor="textSecondary">Creating and checking your personalized plan…</ThemedText>}
+        </> : <><ThemedText themeColor="textSecondary">Enable exercise in your profile’s training preferences to generate a personalized plan.</ThemedText><Button title="Open settings" variant="secondary" onPress={() => { setGenerationOpen(false); router.navigate('/settings'); }} /></>}
+        {!!error && <ThemedText themeColor="danger">{error}</ThemedText>}
+      </ScrollView>
+    </BottomSheet>
   </View>;
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  weeklySummary: { gap: 12 },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  metricCard: { flexGrow: 1, flexBasis: 90, minWidth: 90, borderRadius: 16, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  metricTopRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  metricValue: { fontSize: 30, lineHeight: 36, fontWeight: 700, fontVariant: ['tabular-nums'] },
-  metricLabel: { fontSize: 13, textAlign: 'center' },
-  actionSpace: { height: 136 },
+  todayHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  plansButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  todayState: { padding: 16, borderRadius: 20, gap: 12 },
   actionButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });

@@ -6,12 +6,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './auth';
 import { api, ApiError } from './api';
 import { readLocal, writeLocal } from './local-store';
-import { acknowledgeSession, sessionPayload } from './workout-sync';
+import { acknowledgeSession, reconcileSessions, sessionPayload } from './workout-sync';
+import { prescribedExercises, archiveWorkoutDay } from './workout-tracking';
 import { localDate, timezone } from './plans';
 import type { ExerciseDefinition, LocalSession, WorkoutDay, WorkoutPlan, WorkoutSession } from './exercise-types';
 interface ExerciseContextValue {
   sessions: LocalSession[]; sync: () => Promise<void>; syncing: boolean;
-  start: (day: WorkoutDay, library: ExerciseDefinition[], planId: string | null) => string;
+  start: (day: WorkoutDay, library: ExerciseDefinition[], planId: string | null, initialize?: (session: WorkoutSession) => WorkoutSession) => string;
   importSession: (session: WorkoutSession) => void;
   save: (session: WorkoutSession) => void; resolve: (id: string, choice: 'local' | 'server') => void;
 }
@@ -28,12 +29,18 @@ export function ExerciseProvider({ children }: { children: ReactNode }) {
   const locks = useRef(new Set<string>());
   const records = useCallback(() => readLocal<LocalSession[]>(account, 'sessions') ?? [], [account]);
   const commit = useCallback((rows: LocalSession[]) => {
+    rows = rows.map(row => {
+      const session = archiveWorkoutDay(row.session);
+      return session === row.session ? row : { ...row, session, pending: true, operationId: randomUUID() };
+    });
     writeLocal(account, 'sessions', rows);
     if (currentAccount.current === account) setSessionState({ account, rows });
   }, [account]);
-  useEffect(() => { setSessionState({ account, rows: account ? records() : [] }); }, [account, records]);
+  useEffect(() => { commit(account ? records() : []); }, [account, records, commit]);
   const sync = useCallback(async () => {
-    if (!account || !canSync.current || locks.current.has(account)) return;
+    if (!account) return;
+    commit(records());
+    if (!canSync.current || locks.current.has(account)) return;
     locks.current.add(account); setSyncing(true);
     try {
       for (const initial of records()) {
@@ -56,14 +63,15 @@ export function ExerciseProvider({ children }: { children: ReactNode }) {
         }
       }
       if (currentAccount.current === account && canSync.current) {
-        const page = await api<{ entries: WorkoutSession[] }>('/exercise/sessions?limit=100', { timeoutMs: 15000 });
-        const rows = records();
-        for (const server of page.entries) {
-          const i = rows.findIndex(r => r.session._id === server._id);
-          if (i === -1) rows.push({ session: server, pending: false, operationId: randomUUID(), error: null, conflict: null });
-          else if (!rows[i].pending) rows[i] = { ...rows[i], session: server };
-        }
-        commit(rows);
+        const server: WorkoutSession[] = [];
+        let cursor: string | null = null;
+        do {
+          const page: { entries: WorkoutSession[]; nextCursor: string | null } = await api(`/exercise/sessions?${new URLSearchParams({ limit: '100', ...(cursor ? { cursor } : {}) })}`, { timeoutMs: 15000 });
+          server.push(...page.entries);
+          cursor = page.nextCursor;
+        } while (cursor && currentAccount.current === account && canSync.current);
+        if (currentAccount.current !== account || !canSync.current) return;
+        commit(reconcileSessions(records(), server, randomUUID));
         qc.invalidateQueries({ queryKey: ['exercise', account] });
       }
     } catch { /* Offline: keep local sessions and queued writes. */ }
@@ -78,24 +86,22 @@ export function ExerciseProvider({ children }: { children: ReactNode }) {
     return () => { app.remove(); network.remove(); clearInterval(timer); };
   }, [account, needsSignIn, sync]);
   const save = (session: WorkoutSession) => {
+    if (archiveWorkoutDay(session).status === 'finished') { commit(records()); return; }
     const rows = records();
     const old = rows.find(r => r.session._id === session._id);
     const next: LocalSession = { ...old, session: { ...session, revision: old?.session.revision ?? session.revision }, pending: true, operationId: randomUUID(), error: null, conflict: old?.conflict ?? null };
     commit([...rows.filter(r => r.session._id !== session._id), next]);
   };
-  const start = (day: WorkoutDay, library: ExerciseDefinition[], planId: string | null) => {
+  const start = (day: WorkoutDay, library: ExerciseDefinition[], planId: string | null, initialize?: (session: WorkoutSession) => WorkoutSession) => {
+    commit(records());
     const active = records().find(r => r.session.status === 'in_progress');
     if (active) return active.session._id;
     if (!account || !day.exercises.length) throw new Error('Choose a workout first.');
     const session: WorkoutSession = { _id: randomUUID(), revision: 0, planId, scheduledDate: planId ? day.date : null, date: localDate(), timezone: timezone(),
       title: day.title, startedAt: new Date().toISOString(), finishedAt: null, status: 'in_progress', notes: '', feedback: null,
-      exercises: day.exercises.map(p => {
-        const definition = library.find(e => e.id === p.exerciseId);
-        if (!definition) throw new Error('Exercise instructions are unavailable. Reconnect before starting.');
-        return { exerciseId: p.exerciseId, definition, restSeconds: p.restSeconds, sets: Array.from({ length: p.sets }, () => ({ reps: p.repsMin, weightKg: null, durationSeconds: p.durationSeconds, distanceKm: null, status: 'pending' as const })) };
-      }),
+      exercises: prescribedExercises(day, library),
     };
-    save(session); return session._id;
+    save(initialize ? initialize(session) : session); return session._id;
   };
   const importSession = (session: WorkoutSession) => {
     const rows = records();

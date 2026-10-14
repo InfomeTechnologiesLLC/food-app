@@ -4,10 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Spacing } from '@/constants/theme';
 
-/** Shared bottom-right anchor for tab-page action bubbles. */
+/** Overlay above the tab bar; action bubbles never reserve scroll-content space. */
 export function FloatingActions({ children }: PropsWithChildren) {
   return (
-    <SafeAreaView edges={['bottom', 'right']} pointerEvents="box-none" style={styles.anchor}>
+    <SafeAreaView edges={['right']} pointerEvents="box-none" style={styles.anchor}>
       <View style={styles.stack}>{children}</View>
     </SafeAreaView>
   );

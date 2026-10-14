@@ -212,7 +212,7 @@ test("undo past history after replacement restores stock once without restoring 
   assert.equal(await FoodHistory.countDocuments({ reversed: false }), 0);
   assert.equal(presentIngredient((await readPantry(userId))[0]!).totals[0]!.quantity, 3);
 });
-test("development mock reset removes domain data and preserves account preferences; production reset is refused", async () => {
+test("development mock reset removes domain data and preserves login credentials; production reset is refused", async () => {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const run = promisify(execFile);
@@ -227,7 +227,8 @@ test("development mock reset removes domain data and preserves account preferenc
   await run(process.execPath, ["--import", "tsx", "src/scripts/reset-mock.ts", "--confirm"], { env: { ...env, NODE_ENV: "development" } });
   for (const model of [MealPlan, FoodHistory, PantryIngredient, StockOperation, Scan]) assert.equal(await model.collection.countDocuments(), 0);
   const preserved = await User.findById(userId).lean();
-  assert.equal(preserved!.email, account!.email); assert.deepEqual(preserved!.preferences, account!.preferences);
+  assert.equal(preserved!.email, account!.email); assert.equal(preserved!.passwordHash, account!.passwordHash);
+  assert.deepEqual(preserved!.preferences, { diet: "none", allergies: [], goal: "balanced", budget: "medium" });
 });
 test("whole-plan replacement refuses a schedule containing only the same protected eaten meals", async () => {
   const plan = await makePlan(); await addStock(userId, "whole-noop:stock", [item]); await mark(plan);

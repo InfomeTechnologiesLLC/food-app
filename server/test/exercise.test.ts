@@ -53,7 +53,7 @@ test('session validation distinguishes pending, skipped, completed and partial s
   const base = { planId: null, scheduledDate: null, date: '2026-10-13', timezone: 'Asia/Kolkata', title: 'Walk', startedAt: '2026-10-13T03:00:00.000Z', finishedAt: null, status: 'in_progress', notes: '', feedback: null,
     exercises: [{ exerciseId: 'walk', restSeconds: 60, sets: [{ reps: null, weightKg: null, durationSeconds: null, distanceKm: null, status: 'pending' }] }] };
   assert.ok(sessionPayloadSchema.safeParse(base).success);
-  assert.equal(sessionPayloadSchema.safeParse({ ...base, status: 'finished', finishedAt: '2026-10-13T03:10:00.000Z' }).success, false);
+  assert.equal(sessionPayloadSchema.safeParse({ ...base, status: 'finished', finishedAt: '2026-10-13T03:10:00.000Z' }).success, true);
   const finished = { ...base, status: 'finished', finishedAt: '2026-10-13T03:10:00.000Z', exercises: [{ exerciseId: 'walk', restSeconds: 60, sets: [{ reps: null, weightKg: null, durationSeconds: 600, distanceKm: 1, status: 'completed' }, { reps: null, weightKg: null, durationSeconds: null, distanceKm: null, status: 'skipped' }] }] };
   assert.ok(sessionPayloadSchema.safeParse(finished).success);
   finished.exercises[0].sets[0].reps = 4 as any; assert.equal(sessionPayloadSchema.safeParse(finished).success, false);

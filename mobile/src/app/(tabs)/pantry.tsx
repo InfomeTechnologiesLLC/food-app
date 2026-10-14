@@ -33,7 +33,7 @@ export default function PantryScreen() {
 
   return (
     <View style={styles.page}>
-    <Screen scroll={false} edges={['bottom']}>
+    <Screen scroll={false} edges={[]}>
       <FlatList
         data={filtered}
         keyExtractor={(i) => i.key}
@@ -41,7 +41,7 @@ export default function PantryScreen() {
         onRefresh={refetch}
         refreshing={isRefetching}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: Spacing.three, gap: Spacing.two, paddingBottom: 88 }}
+        contentContainerStyle={{ padding: Spacing.three, gap: Spacing.two }}
         ListHeaderComponent={
           <View style={{ gap: Spacing.three, paddingBottom: Spacing.one }}>
             <View style={styles.topRow}>

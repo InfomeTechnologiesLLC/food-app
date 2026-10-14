@@ -49,7 +49,6 @@ const GOALS: Record<string, string> = {
   balanced: "balanced, varied nutrition",
   weight_loss: "weight-conscious balanced meals: high protein, high fibre, satisfying portions",
   muscle_gain: "high protein with enough calories to support muscle gain",
-  budget: "the lowest possible cost",
 };
 
 function shoppingRule(maxExtraItems: number | null, days: number) {

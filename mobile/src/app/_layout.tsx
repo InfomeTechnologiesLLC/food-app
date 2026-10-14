@@ -3,9 +3,10 @@ import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-rout
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { AlertHost } from '@/components/themed-alert';
+import { WorkoutHistoryHeader } from '@/components/workout-history-header';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { ExerciseProvider } from "@/lib/exercise";
@@ -42,7 +43,11 @@ function RootNavigator() {
           <Stack.Screen name="training-settings" options={{ headerShown: true, title: 'Training preferences' }} />
           <Stack.Screen name="training-plan/[id]" options={{ headerShown: true, title: 'Workout plan' }} />
           <Stack.Screen name="workout/[id]" options={{ headerShown: true, title: 'Workout' }} />
-          <Stack.Screen name="workout-history" options={{ headerShown: true, title: 'Workout history' }} />
+          <Stack.Screen name="workout-history" options={{
+            headerShown: true,
+            title: 'Workout history',
+            ...(Platform.OS === 'android' && { header: () => <WorkoutHistoryHeader /> }),
+          }} />
           <Stack.Screen name="reauth" options={{ headerShown: true, title: 'Sign in' }} />
           <Stack.Screen name="food-history" options={{ headerShown: true, title: 'Food history' }} />
           <Stack.Screen name="upgrade" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />

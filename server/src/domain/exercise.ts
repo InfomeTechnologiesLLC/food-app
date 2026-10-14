@@ -77,13 +77,12 @@ export const setLogSchema = z.object({ reps: z.number().int().min(1).max(200).nu
 export const sessionPayloadSchema = z.object({
   planId: z.string().nullable(), scheduledDate: dateSchema.nullable(), date: dateSchema, timezone: timezoneSchema,
   title: z.string().min(1).max(100), startedAt: z.iso.datetime(), finishedAt: z.iso.datetime().nullable(),
-  status: z.enum(['in_progress', 'finished', 'discarded']), notes: z.string().max(2000), feedback: z.enum(['easy', 'right', 'hard']).nullable(),
+  status: z.enum(['in_progress', 'finished']), notes: z.string().max(2000), feedback: z.enum(['easy', 'right', 'hard']).nullable(),
   exercises: z.array(z.object({ exerciseId: z.string(), restSeconds: z.number().int().min(30).max(180), sets: z.array(setLogSchema).min(1).max(10) }).strict()).min(1).max(20),
 }).strict().superRefine((s, ctx) => {
-  if ((s.status === 'in_progress') !== (s.finishedAt === null)) ctx.addIssue({ code: 'custom', message: 'Finished/discarded sessions need an end time' });
+  if ((s.status === 'in_progress') !== (s.finishedAt === null)) ctx.addIssue({ code: 'custom', message: 'Finished sessions need an end time' });
   if (s.finishedAt && s.finishedAt < s.startedAt) ctx.addIssue({ code: 'custom', message: 'End time precedes start' });
   if (s.planId && !/^[a-f\d]{24}$/i.test(s.planId)) ctx.addIssue({ code: 'custom', message: 'Invalid plan ID' });
-  if (s.status === 'finished' && !s.exercises.some(e => e.sets.some(x => x.status === 'completed'))) ctx.addIssue({ code: 'custom', message: 'Complete at least one set before finishing' });
   for (const item of s.exercises) {
     const e = exerciseById(item.exerciseId);
     if (!e) { ctx.addIssue({ code: 'custom', message: 'Unknown exercise' }); continue; }

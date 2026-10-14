@@ -35,7 +35,7 @@ const listeners = new Set<(s: ReminderSettings) => void>();
 async function loadSettings(): Promise<ReminderSettings> {
   if (settingsCache) return settingsCache;
   const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
-  settingsCache = raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
+  settingsCache = raw ? JSON.parse(raw) as ReminderSettings : DEFAULT_SETTINGS;
   return settingsCache!;
 }
 

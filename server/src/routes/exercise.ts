@@ -1,3 +1,4 @@
+import { archiveWorkoutDay } from '../lib/workout-day.js';
 import { Router } from 'express';
 import mongoose, { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
@@ -20,8 +21,8 @@ router.post('/plans', async (req: AuthRequest, res) => {
   if (!user) return res.status(401).json({ error: 'Account not found' });
   const prefs = trainingSchema.safeParse(user.training);
   if (!prefs.success || !prefs.data.enabled) return res.status(400).json({ error: 'Set up exercise preferences first' });
-  const sessions = await WorkoutSession.find({ userId: req.userId, status: 'finished' }).sort({ startedAt: -1 }).limit(10).lean();
-  const context: WorkoutContext = { ...body.data, training: prefs.data, body: user.body ?? {}, recentSessions: sessions.map(({ date, feedback, exercises, notes }) => ({ date, feedback, exercises, notes })) };
+  const sessions = await WorkoutSession.find({ userId: req.userId }).sort({ startedAt: -1 }).lean();
+  const context: WorkoutContext = { ...body.data, training: prefs.data, body: user.body ?? {}, recentSessions: sessions.map(s => archiveWorkoutDay(s)).filter(s => s.status === 'finished').slice(0, 10).map(({ date, feedback, exercises, notes }) => ({ date, feedback, exercises, notes })) };
   try {
     const generated = await generateWorkout(context);
     const plan = await WorkoutPlan.create({ userId: req.userId, ...generated, context });
@@ -35,7 +36,7 @@ router.patch('/plans/:id', async (req: AuthRequest, res) => {
   if (!plan) return res.status(404).json({ error: 'Plan not found' });
   const errors = validateWorkout(body.data, plan.context as WorkoutContext);
   if (errors.length) return res.status(400).json({ error: errors.join('; ') });
-  const updated = await WorkoutPlan.findOneAndUpdate({ _id: plan._id, userId: req.userId, __v: body.data.revision, status: { $ne: 'archived' } },
+  const updated = await WorkoutPlan.findOneAndUpdate({ _id: plan._id, userId: req.userId, __v: body.data.revision, status: { $in: ['draft', 'active'] } },
     { $set: { title: body.data.title, days: body.data.days }, $inc: { __v: 1 } }, { returnDocument: 'after', runValidators: true });
   if (!updated) return res.status(409).json({ error: 'Plan changed. Refresh before editing.' });
   res.json(updated);
@@ -67,7 +68,7 @@ router.delete('/plans/:id', async (req: AuthRequest, res) => {
 router.get('/sessions', async (req: AuthRequest, res) => {
   const query = z.object({ date: dateSchema.optional(), cursor: z.string().uuid().optional(), limit: z.coerce.number().int().min(1).max(100).default(20) }).safeParse(req.query);
   if (!query.success) return res.status(400).json({ error: 'Invalid history query' });
-  const filter: mongoose.QueryFilter<mongoose.InferSchemaType<typeof WorkoutSession.schema>> = { userId: req.userId, status: { $ne: 'discarded' }, ...(query.data.date ? { date: query.data.date } : {}) };
+  const filter: mongoose.QueryFilter<mongoose.InferSchemaType<typeof WorkoutSession.schema>> = { userId: req.userId, ...(query.data.date ? { date: query.data.date } : {}) };
   let before = {};
   if (query.data.cursor) {
     const cursor = await WorkoutSession.findOne({ _id: query.data.cursor, userId: req.userId }).lean();
@@ -77,7 +78,7 @@ router.get('/sessions', async (req: AuthRequest, res) => {
   const entries = await WorkoutSession.find({ ...filter, ...before }).sort({ date: -1, _id: -1 }).limit(query.data.limit + 1).lean();
   const hasMore = entries.length > query.data.limit;
   if (hasMore) entries.pop();
-  res.json({ entries, nextCursor: hasMore ? entries.at(-1)!._id : null });
+  res.json({ entries: entries.map(s => archiveWorkoutDay(s)), nextCursor: hasMore ? entries.at(-1)!._id : null });
 });
 router.put('/sessions/:id', async (req: AuthRequest, res) => {
   const body = z.object({ baseRevision: z.number().int().min(0), operationId: z.string().uuid(), session: sessionPayloadSchema }).strict().safeParse(req.body);
@@ -85,18 +86,18 @@ router.put('/sessions/:id', async (req: AuthRequest, res) => {
   const { baseRevision, operationId, session: payload } = body.data;
   if (payload.date !== calendarToday(payload.timezone, new Date(payload.startedAt)) || payload.date > calendarToday(payload.timezone) || new Date(payload.startedAt).getTime() > Date.now() + 60000 || (payload.finishedAt && new Date(payload.finishedAt).getTime() > Date.now() + 60000)) return res.status(400).json({ error: 'Session date must match its start time and cannot be in the future' });
   const previous = await WorkoutSession.findOne({ _id: req.params.id as string, userId: req.userId }).lean();
-  if (previous?.operationId === operationId) return res.json(previous);
-  if ((previous?.revision ?? 0) !== baseRevision) return res.status(409).json({ error: 'This workout changed on another device', code: 'SESSION_CONFLICT', server: previous });
-  const data = { ...payload, exercises: payload.exercises.map(e => ({ ...e, definition: previous?.exercises.find(x => x.exerciseId === e.exerciseId)?.definition ?? exerciseById(e.exerciseId) })) };
+  if (previous?.operationId === operationId) return res.json(archiveWorkoutDay(previous));
+  if ((previous?.revision ?? 0) !== baseRevision) return res.status(409).json({ error: 'This workout changed on another device', code: 'SESSION_CONFLICT', server: previous ? archiveWorkoutDay(previous) : previous });
+  const data = { ...archiveWorkoutDay(payload), exercises: payload.exercises.map(e => ({ ...e, definition: previous?.exercises.find(x => x.exerciseId === e.exerciseId)?.definition ?? exerciseById(e.exerciseId) })) };
   if (!previous) {
     try { return res.status(201).json(await WorkoutSession.create({ _id: req.params.id as string, userId: req.userId, ...data, revision: 1, operationId })); }
     catch (err) { if ((err as { code?: number }).code !== 11000) throw err; }
   } else {
     const updated = await WorkoutSession.findOneAndUpdate({ _id: req.params.id as string, userId: req.userId, revision: baseRevision }, { $set: { ...data, operationId }, $inc: { revision: 1 } }, { returnDocument: 'after', runValidators: true });
-    if (updated) return res.json(updated);
+    if (updated) return res.json(archiveWorkoutDay(updated.toObject()));
   }
   const server = await WorkoutSession.findOne({ _id: req.params.id as string, userId: req.userId }).lean();
-  if (server?.operationId === operationId) return res.json(server);
-  res.status(409).json({ error: 'This workout changed. Choose which version to keep.', code: 'SESSION_CONFLICT', server });
+  if (server?.operationId === operationId) return res.json(archiveWorkoutDay(server));
+  res.status(409).json({ error: 'This workout changed. Choose which version to keep.', code: 'SESSION_CONFLICT', server: server ? archiveWorkoutDay(server) : server });
 });
 export default router;

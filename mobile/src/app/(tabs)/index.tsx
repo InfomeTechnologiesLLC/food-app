@@ -4,6 +4,7 @@ import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BmiCard } from '@/components/bmi-card';
 import { DailyProgressCard } from '@/components/daily-progress-card';
+import { ExerciseProgressCard } from '@/components/exercise-progress-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -13,16 +14,18 @@ import { daysUntil, usePantry } from '@/lib/pantry';
 import { activePlan, usePlan, usePlans } from '@/lib/plans';
 import { useCalendarDate } from '@/hooks/use-calendar-date';
 import { useDailyHistory } from '@/lib/history';
+import { useExercise, useWorkoutPlans } from '@/lib/exercise';
 import { remaining } from '@/lib/usage';
 
 const plural = (n: number, word: string) => `${word}${n === 1 ? '' : 's'}`;
 
-function StatTile({ value, label, icon, iconColor, href }: {
+function StatTile({ value, label, icon, iconColor, href, urgent = false }: {
   value: number | string;
   label: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   iconColor: string;
   href: Href;
+  urgent?: boolean;
 }) {
   const theme = useTheme();
   return (
@@ -30,10 +33,10 @@ function StatTile({ value, label, icon, iconColor, href }: {
       onPress={() => router.navigate(href)}
       style={({ pressed }) => [styles.tile, styles.statTile, { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }]}>
       <View style={styles.rowBetween}>
-        <ThemedText style={styles.statValue}>{value}</ThemedText>
+        <ThemedText style={[styles.statValue, urgent && { color: theme.danger }]}>{value}</ThemedText>
         <Ionicons name={icon} size={20} color={iconColor} />
       </View>
-      <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>{label}</ThemedText>
+      <ThemedText type="small" themeColor={urgent ? undefined : 'textSecondary'} style={[{ fontSize: 12 }, urgent && { color: theme.danger }]}>{label}</ThemedText>
     </Pressable>
   );
 }
@@ -45,20 +48,26 @@ export default function HomeScreen() {
   const { data: items = [], isLoading, refetch, isRefetching } = usePantry();
   const { data: plans = [], refetch: refetchPlans, isLoading: plansLoading, error: plansError, isRefetching: plansRefetching } = usePlans();
   const history = useDailyHistory(date);
+  const workouts = useWorkoutPlans();
+  const { sync: syncWorkouts, syncing: workoutsSyncing } = useExercise();
   const latest = activePlan(plans);
   const { data: currentPlan, isLoading: planLoading, error: planError, refetch: refetchPlan, isRefetching: planRefetching } = usePlan(latest?._id);
   const refresh = () => {
     refetch();
     history.refetch();
     refetchPlans();
+    void workouts.refetch();
+    void syncWorkouts();
     if (latest) refetchPlan();
   };
   const scansLeft = remaining(user, 'scans');
-  const expiringSoon = items.filter((i) => i.expiryDate && daysUntil(i.expiryDate) <= 3);
+  const expiredCount = items.filter((i) => i.expiryDate && daysUntil(i.expiryDate) < 0).length;
+  const expiringSoonCount = items.filter((i) => i.expiryDate && daysUntil(i.expiryDate) >= 0 && daysUntil(i.expiryDate) <= 3).length;
+  const hasExpiredItems = expiredCount > 0;
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching || plansRefetching || planRefetching || history.isRefetching} onRefresh={refresh} />}>
+    <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching || plansRefetching || planRefetching || history.isRefetching || workouts.isRefetching || workoutsSyncing} onRefresh={refresh} />}>
       <View style={{ gap: Spacing.one, paddingTop: Spacing.two }}>
         <ThemedText type="small" themeColor="textSecondary">{dateLabel}</ThemedText>
         <ThemedText type="subtitle">
@@ -83,11 +92,12 @@ export default function HomeScreen() {
 
         <View style={{ flex: 1, gap: Spacing.two }}>
           <StatTile
-            value={expiringSoon.length}
-            label={`${plural(expiringSoon.length, 'Item')} to use soon`}
-            icon="time-outline"
-            iconColor={theme.warning}
+            value={hasExpiredItems ? expiredCount : expiringSoonCount}
+            label={hasExpiredItems ? `${plural(expiredCount, 'Item')} expired` : `${plural(expiringSoonCount, 'Item')} to use soon`}
+            icon={hasExpiredItems ? 'alert-circle-outline' : 'time-outline'}
+            iconColor={hasExpiredItems ? theme.danger : theme.warning}
             href="/pantry"
+            urgent={hasExpiredItems}
           />
           <BmiCard />
         </View>
@@ -123,6 +133,7 @@ export default function HomeScreen() {
         error={plansError ?? planError ?? history.error}
         onRetry={refresh}
       />
+      <ExerciseProgressCard date={date} />
     </Screen>
   );
 }

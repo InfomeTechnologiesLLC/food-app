@@ -19,6 +19,7 @@ export const Colors = {
     danger: '#D93025',
     warning: '#B26A00',
     border: '#E0E1E6',
+    controlBorder: '#8C9098',
   },
   dark: {
     text: '#ffffff',
@@ -31,6 +32,7 @@ export const Colors = {
     danger: '#FF6B5E',
     warning: '#F0A93B',
     border: '#2E3135',
+    controlBorder: '#737981',
   },
 } as const;
 

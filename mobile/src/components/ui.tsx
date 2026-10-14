@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, type TextInputProps, View } from 'react-native';
 
@@ -16,16 +17,18 @@ export function Button({
   disabled?: boolean;
 }) {
   const theme = useTheme();
-  const bg = variant === 'primary' ? theme.tint : variant === 'danger' ? 'transparent' : theme.backgroundElement;
+  const bg = variant === 'primary' ? theme.tint : variant === 'danger' ? 'transparent' : theme.backgroundSelected;
   const fg = variant === 'primary' ? theme.tintText : variant === 'danger' ? theme.danger : theme.text;
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       onPress={onPress}
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
         { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.8 : 1 },
-        variant === 'danger' && { borderWidth: 1, borderColor: theme.danger },
+        variant !== 'primary' && { borderWidth: 1, borderColor: variant === 'danger' ? theme.danger : theme.controlBorder },
       ]}>
       {loading ? (
         <ActivityIndicator color={fg} />
@@ -39,14 +42,18 @@ export function Button({
   );
 }
 
-export function Input({ label, style, ...props }: TextInputProps & { label?: string }) {
+export function Input({ label, style, onFocus, onBlur, ...props }: TextInputProps & { label?: string }) {
   const theme = useTheme();
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: Spacing.one }}>
       {label && <ThemedText type="small" themeColor="textSecondary">{label}</ThemedText>}
       <TextInput
+        accessibilityLabel={label}
         placeholderTextColor={theme.textSecondary}
-        style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.border }, style]}
+        onFocus={event => { setFocused(true); onFocus?.(event); }}
+        onBlur={event => { setFocused(false); onBlur?.(event); }}
+        style={[styles.input, { color: theme.text, backgroundColor: theme.background, borderColor: theme.controlBorder }, style, focused && { borderColor: theme.tint, borderWidth: 2 }]}
         {...props}
       />
     </View>
@@ -100,9 +107,9 @@ export function Section({ title, children }: { title: string; children: React.Re
 export const humanize = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_/g, ' ');
 
 const styles = StyleSheet.create({
-  button: { height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.three },
+  button: { minHeight: 50, paddingVertical: Spacing.two, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.three },
   buttonContent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  input: { height: 48, borderRadius: 12, paddingHorizontal: Spacing.three, fontSize: 16, borderWidth: StyleSheet.hairlineWidth },
+  input: { height: 48, borderRadius: 12, paddingHorizontal: Spacing.three, fontSize: 16, borderWidth: 1 },
   chip: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: 999, borderWidth: 1 },
   chipFill: { flexGrow: 1, alignItems: 'center' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
