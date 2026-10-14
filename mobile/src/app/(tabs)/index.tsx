@@ -55,8 +55,6 @@ export default function HomeScreen() {
   };
   const scansLeft = remaining(user, 'scans');
   const expiringSoon = items.filter((i) => i.expiryDate && daysUntil(i.expiryDate) <= 3);
-  const toBuy = latest ? latest.shoppingTotal : 0;
-  const progress = latest && latest.totalMeals > 0 ? latest.readyMeals / latest.totalMeals : 0;
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
@@ -117,40 +115,6 @@ export default function HomeScreen() {
         )}
       </View>
 
-      <Pressable
-        onPress={() => (latest ? router.push({ pathname: '/plan/[id]', params: { id: latest._id } }) : router.navigate('/plans'))}
-        style={({ pressed }) => [styles.tile, { gap: Spacing.three, marginTop: Spacing.three, backgroundColor: theme.backgroundElement, borderColor: theme.border, borderWidth: 1, opacity: pressed ? 0.85 : 1 }]}>
-        <View style={[styles.rowBetween, { gap: Spacing.two }]}>
-          <View style={{ flex: 1, gap: Spacing.two }}>
-            <ThemedText style={[styles.eyebrow, { color: theme.textSecondary }]}>
-              {latest ? `${latest.dayCount}-DAY MEAL PLAN` : 'MEAL PLAN'}
-            </ThemedText>
-            <ThemedText style={{ fontSize: 22, lineHeight: 28, fontWeight: 600 }}>
-              {latest ? latest.title : 'Plan your meals'}
-            </ThemedText>
-          </View>
-          <Ionicons name="arrow-forward" size={22} color={theme.tint} />
-        </View>
-
-        {latest ? (
-          <View style={{ gap: Spacing.two }}>
-            <View style={[styles.track, { backgroundColor: theme.backgroundSelected }]}>
-              <View style={[styles.track, { width: `${progress * 100}%`, backgroundColor: theme.tint }]} />
-            </View>
-            <View style={styles.rowBetween}>
-              <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>
-                {latest.readyMeals} / {latest.totalMeals} meals ready
-              </ThemedText>
-              <ThemedText type="small" style={{ fontSize: 12, color: theme.warning }}>
-                {toBuy} {plural(toBuy, 'item')} to buy
-              </ThemedText>
-            </View>
-          </View>
-        ) : (
-          <ThemedText type="small" themeColor="textSecondary">Turn your pantry into a 1–7 day plan.</ThemedText>
-        )}
-      </Pressable>
-
       <DailyProgressCard
         date={date}
         plan={currentPlan}
@@ -173,5 +137,4 @@ const styles = StyleSheet.create({
   heroValue: { fontSize: 56, lineHeight: 64, fontWeight: 700 },
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: 600, letterSpacing: 1.2 },
   action: { height: 50, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  track: { height: 6, borderRadius: 3, overflow: 'hidden' },
 });

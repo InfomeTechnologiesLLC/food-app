@@ -19,9 +19,7 @@ export function DailyProgressCard({ plan, history, date, loading, error, onRetry
   const theme = useTheme();
   const progress = dailyProgress(plan, history, date);
   const hasMeals = !!progress?.totalMeals;
-  const openMeals = () => plan
-    ? router.push({ pathname: '/plan/[id]', params: { id: plan._id } })
-    : router.navigate('/plans');
+  const openMeals = () => router.navigate('/plans');
 
   return (
     <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
@@ -83,9 +81,6 @@ export function DailyProgressCard({ plan, history, date, loading, error, onRetry
           </Pressable>
         </>
       )}
-      <Pressable accessibilityRole="button" onPress={() => router.push('/food-history')} hitSlop={8}>
-        <ThemedText type="small" themeColor="tint">Food history →</ThemedText>
-      </Pressable>
     </View>
   );
 }

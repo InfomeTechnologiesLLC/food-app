@@ -22,7 +22,10 @@ test("plans serve one person and include optional measurements", async (t) => {
   assert.match(prompt, /Current weight: 65 kg/);
   assert.doesNotMatch(prompt, /Budget:/);
   assert.match(prompt, /Do not infer health status/);
-  await generatePlan({ days: 1, mealTypes: ["dinner"], pantry: [], prefs: { diet: "none", allergies: [], goal: "balanced", budget: "low" }, maxExtraItems: null });
+  await generatePlan({ days: 1, mealTypes: ["dinner"], pantry: [], prefs: { diet: "none", allergies: [], goal: "balanced", budget: "low" }, maxExtraItems: null, trainingContext: { goal: "strength", days: [{ date: "2026-10-13", title: "Strength session", exercises: [] }] } });
   assert.doesNotMatch(requests[1].contents, /- Height:|- Current weight:/);
   assert.match(requests[1].contents, /Budget: low/);
+  assert.match(requests[1].contents, /TRAINING CONTEXT/);
+  assert.match(requests[1].contents, /Strength session/);
+  assert.match(requests[1].contents, /Do not estimate exercise calorie credits/);
 });

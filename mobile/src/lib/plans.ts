@@ -12,13 +12,8 @@ export function usePlan(id: string | undefined) {
 }
 
 export function useGeneratePlan() {
-  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { days: number; mealTypes: MealType[]; maxExtraItems: number | null }) => api<MealPlan>('/plans', { method: 'POST', body }),
-    onSuccess: (plan) => {
-      qc.setQueryData(['plans', plan._id], plan);
-      qc.invalidateQueries({ queryKey: ['plans'], exact: true });
-    },
+    mutationFn: (body: { days: number; mealTypes: MealType[]; maxExtraItems: number | null }) => api<MealPlan & { previewToken: string }>('/plans', { method: 'POST', body }),
   });
 }
 
@@ -51,14 +46,8 @@ function usePlanChange<V>(fn: (vars: V) => Promise<MealPlan>) {
   });
 }
 
-export const useActivatePlan = () =>
-  usePlanChange(({ id, target }: { id: string; target: PlanTarget }) => api<MealPlan>(`/plans/${id}/activate`, { method: 'POST', body: { ...target, timezone: timezone() } }));
-export const useMergePlan = () =>
-  usePlanChange(({ id, days, target }: { id: string; days: number[]; target: PlanTarget }) =>
-    api<MealPlan>(`/plans/${id}/merge`, { method: 'POST', body: { days, ...target, timezone: timezone() } }));
-export const useReplaceDay = () =>
-  usePlanChange(({ id, fromDay, toDay, target }: { id: string; fromDay: number; toDay: number; target: PlanTarget }) =>
-    api<MealPlan>(`/plans/${id}/replace-day`, { method: 'POST', body: { fromDay, toDay, ...target, timezone: timezone() } }));
+export const useReplacePlan = () =>
+  usePlanChange(({ previewToken, target }: { previewToken: string; target: PlanTarget }) => api<MealPlan>('/plans/replace', { method: 'POST', body: { previewToken, ...target, timezone: timezone() } }));
 export const useMarkEaten = (planId: string) =>
   usePlanChange(async ({ mealId, historyEntryId, eaten, confirm, revision }: { mealId: string; historyEntryId: string | null; eaten: boolean; confirm?: boolean; revision: number }) => {
     if (!eaten) {
@@ -67,18 +56,6 @@ export const useMarkEaten = (planId: string) =>
     }
     return api<MealPlan>(`/plans/${planId}/meals/${mealId}/eaten`, { method: 'POST', body: { confirm, revision, timezone: timezone() } });
   });
-
-export function useDeletePlan() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api<void>(`/plans/${id}`, { method: 'DELETE' }),
-    onSuccess: (_data, id) => {
-      qc.removeQueries({ queryKey: ['plans', id], exact: true });
-      qc.invalidateQueries({ queryKey: ['plans'] });
-      qc.invalidateQueries({ queryKey: ['food-history'] });
-    },
-  });
-}
 
 export const activePlan = (plans: MealPlanSummary[]) => plans.find((p) => p.status === 'active');
 

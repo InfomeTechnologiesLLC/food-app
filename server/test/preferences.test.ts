@@ -5,15 +5,15 @@ import { User } from "../src/models/User.js";
 import { toPublicUser } from "../src/lib/usage.js";
 
 // Exercise the preferences handler with persistence mocked; no database or AI needed.
-const handler = router.stack.find((layer) => layer.route?.path === "/preferences")!.route!.stack[0]!.handle;
-async function patch(body: unknown) {
+const handlerFor = (path: string) => router.stack.find((layer) => layer.route?.path === path)!.route!.stack[0]!.handle;
+async function patch(body: unknown, path = "/body") {
   let status = 200;
   let result: any;
   const res = {
     status(code: number) { status = code; return this; },
     json(value: unknown) { result = value; return this; },
   };
-  await handler({ userId: "user-id", body } as any, res as any, () => {});
+  await handlerFor(path)({ userId: "user-id", body } as any, res as any, () => {});
   return { status, result };
 }
 const publicDocument = { toObject: () => ({ plan: "free", preferences: {}, usage: {} }) };
@@ -21,11 +21,11 @@ const publicDocument = { toObject: () => ({ plan: "free", preferences: {}, usage
 test("measurements save with a server timestamp and model validation", async (t) => {
   const update = t.mock.method(User, "findByIdAndUpdate", async () => publicDocument);
   const before = Date.now();
-  assert.equal((await patch({ heightCm: 170, weightKg: 65, weightUpdatedAt: "1900-01-01" })).status, 200);
+  assert.equal((await patch({ heightCm: 170, weightKg: 65 })).status, 200);
   const args = update.mock.calls[0]!.arguments as any[];
-  assert.equal(args[1].$set["preferences.heightCm"], 170);
-  assert.equal(args[1].$set["preferences.weightKg"], 65);
-  assert.ok(args[1].$set["preferences.weightUpdatedAt"].getTime() >= before);
+  assert.equal(args[1].$set["body.heightCm"], 170);
+  assert.equal(args[1].$set["body.weightKg"], 65);
+  assert.ok(args[1].$set["body.weightUpdatedAt"].getTime() >= before);
   assert.equal(args[1].$unset, undefined);
   assert.equal(args[2].strict, undefined);
   assert.equal(args[2].runValidators, true);
@@ -41,16 +41,16 @@ test("invalid measurements cannot reach persistence", async (t) => {
 
 test("other preference changes do not refresh the weight check-in; clearing weight clears its date", async (t) => {
   const update = t.mock.method(User, "findByIdAndUpdate", async () => publicDocument);
-  await patch({ goal: "muscle_gain" });
-  assert.equal((update.mock.calls[0]!.arguments as any[])[1].$set["preferences.weightUpdatedAt"], undefined);
+  await patch({ goal: "muscle_gain" }, "/preferences");
+  assert.equal((update.mock.calls[0]!.arguments as any[])[1].$set["body.weightUpdatedAt"], undefined);
   await patch({ weightKg: null, heightCm: null });
-  assert.equal((update.mock.calls[1]!.arguments as any[])[1].$set["preferences.weightUpdatedAt"], null);
+  assert.equal((update.mock.calls[1]!.arguments as any[])[1].$set["body.weightUpdatedAt"], null);
 });
 
 test("personal accounts expose their stored plan and measurements", () => {
-  const user = toPublicUser({ toObject: () => ({ plan: "plus", preferences: { heightCm: 170, weightKg: 65 }, usage: {} }) });
+  const user = toPublicUser({ toObject: () => ({ plan: "plus", body: { heightCm: 170, weightKg: 65 }, usage: {} }) });
   assert.equal(user.plan, "plus");
-  assert.equal(user.preferences.heightCm, 170);
-  assert.equal(user.preferences.weightKg, 65);
+  assert.equal(user.body.heightCm, 170);
+  assert.equal(user.body.weightKg, 65);
   assert.equal(user.limits.plansPerMonth, null);
 });

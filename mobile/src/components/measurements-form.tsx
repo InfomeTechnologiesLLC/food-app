@@ -6,7 +6,7 @@ import { Button, Input } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import { parseMeasurements } from '@/lib/measurements';
-import type { Preferences } from '@/lib/types';
+import type { BodyMeasurements } from '@/lib/types';
 
 export function MeasurementInputs({ height, weight, onHeightChange, onWeightChange }: {
   height: string;
@@ -22,8 +22,8 @@ export function MeasurementInputs({ height, weight, onHeightChange, onWeightChan
   );
 }
 
-export function MeasurementsForm({ initial, onSaved }: { initial: Preferences; onSaved: () => void }) {
-  const { updatePreferences } = useAuth();
+export function MeasurementsForm({ initial, onSaved }: { initial: BodyMeasurements; onSaved: () => void }) {
+  const { updateBody } = useAuth();
   const [height, setHeight] = useState(initial.heightCm?.toString() ?? '');
   const [weight, setWeight] = useState(initial.weightKg?.toString() ?? '');
   const [saving, setSaving] = useState(false);
@@ -32,7 +32,7 @@ export function MeasurementsForm({ initial, onSaved }: { initial: Preferences; o
     setSaving(true);
     setError(null);
     try {
-      await updatePreferences(parseMeasurements(height, weight));
+      await updateBody(parseMeasurements(height, weight));
       onSaved();
     } catch (e) {
       setError((e as Error).message);

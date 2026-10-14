@@ -59,11 +59,6 @@ const upma = meal("lunch", "Vegetable rava upma", "Roasted semolina with vegetab
 const kanji = meal("dinner", "Cherupayar kanji & coconut chammanthi", "A light red-rice and green-gram porridge with coconut chutney.", 35, 460, 16, 76, 11,
   [i("red rice", 60), i("green gram", 45), i("coconut", 25), i("shallot", 15), i("green chili", 5), i("ginger", 3)],
   ["Rinse rice and soaked green gram and cook with extra water until soft.", "Season the porridge with salt and adjust its consistency with hot water.", "Grind coconut, shallot, green chilli and ginger into a coarse chammanthi.", "Serve the warm kanji with the chutney on the side."]);
-const draftBreakfast = { ...idiyappam, type: "breakfast" as const, title: "Idiyappam & green-gram breakfast" };
-const draftLunch = meal("lunch", "Matta rice & beetroot thoran", "A replacement lunch with coconut beetroot stir-fry. Beetroot is intentionally absent from the pantry.", 25, 450, 10, 75, 12,
-  [i("red rice", 75), i("beetroot", 120), i("coconut", 25), i("shallot", 20), i("coconut oil", 5, "ml"), i("curry leaf", 2)],
-  ["Cook the red rice until tender.", "Grate beetroot and sauté shallots with mustard seeds and curry leaves.", "Add beetroot, coconut, turmeric and salt; cover and cook until tender.", "Serve with the rice."]);
-
 const stock = (name: string, quantity: number, unit: string, category: PantryCategory, days?: number): StockInput => ({
   name, quantity, unit, category, source: "manual", expiryDate: days === undefined ? null : new Date(`${addDays(today, days)}T00:00:00Z`),
 });
@@ -92,13 +87,10 @@ try {
       if (await collection.collection.countDocuments({ userId: user._id }, { session })) throw new Error("This account already has domain data. Seed only a freshly reset test account.");
     }
     await addStockInSession(user.id, key, pantry, session);
-    const settingsSnapshot = { ...user.toObject().preferences!, mealTypes: ["breakfast", "lunch", "dinner"], maxExtraItems: 5 };
+    const settingsSnapshot = { ...user.toObject().preferences!, body: user.toObject().body, mealTypes: ["breakfast", "lunch", "dinner"], maxExtraItems: 5 };
     await MealPlan.create([{
       userId: user._id, title: "Kerala home kitchen · 3-day mock plan", status: "active", startDate, settingsSnapshot,
       days: [[puttu, thoran, dosa], [appam, avial, idiyappam], [idli, upma, kanji]].map((meals, index) => ({ day: index + 1, date: addDays(startDate, index), meals })),
-    }, {
-      userId: user._id, title: "Kerala alternatives · replacement mock draft", status: "draft", settingsSnapshot,
-      days: [{ day: 1, meals: [draftBreakfast, draftLunch, { ...dosa, title: "Dosa & sambar supper" }] }, { day: 2, meals: [idli, upma, kanji] }],
     }], { session, ordered: true });
     return "seeded";
   });
@@ -108,7 +100,7 @@ try {
   console.log(JSON.stringify({ result, email: user.email, timezone, startDate: active?.startDate,
     pantryItems: (await readPantry(user.id)).length, pantryBatches: (await readPantry(user.id)).reduce((count, item) => count + item.batches.length, 0),
     activeMeals: ready?.totalMeals, readyMeals: ready?.readyMeals, shopping: active ? buildShoppingList(active.days.flatMap((day) => day.meals), stock) : [],
-    drafts: await MealPlan.countDocuments({ userId: user._id, status: "draft" }), historyEntries: await FoodHistory.countDocuments({ userId: user._id }),
+    historyEntries: await FoodHistory.countDocuments({ userId: user._id }),
     usage: (await User.findById(user._id).lean())?.usage,
   }, null, 2));
 } finally { await mongoose.disconnect(); }

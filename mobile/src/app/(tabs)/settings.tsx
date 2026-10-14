@@ -98,11 +98,13 @@ export default function SettingsScreen() {
       <ListCard>
         <ListRow icon="leaf-outline" iconColor={theme.tint} label="Diet" value={prefs.diet === 'none' ? 'No restrictions' : humanize(prefs.diet)} onPress={() => open('diet')} />
         <ListRow icon="shield-outline" iconColor={theme.danger} label="Allergies" value={summarizeAllergies(prefs.allergies)} onPress={() => open('allergies')} />
-        <ListRow icon="radio-button-on-outline" iconColor={theme.warning} label="Health goal" value={humanize(prefs.goal)} onPress={() => open('goal')} />
-        <ListRow icon="body-outline" label="Body measurements" value={[prefs.heightCm ? `${prefs.heightCm} cm` : null, prefs.weightKg ? `${prefs.weightKg} kg` : null].filter(Boolean).join(' · ') || 'Add height and weight'} onPress={() => open('measurements')} />
+        <ListRow icon="radio-button-on-outline" iconColor={theme.warning} label="Nutrition goal" value={humanize(prefs.goal)} onPress={() => open('goal')} />
+        <ListRow icon="body-outline" label="Body measurements" value={[user.body.heightCm ? `${user.body.heightCm} cm` : null, user.body.weightKg ? `${user.body.weightKg} kg` : null].filter(Boolean).join(' · ') || 'Add height and weight'} onPress={() => open('measurements')} />
         <ListRow icon="card-outline" label="Budget" value={humanize(prefs.budget)} onPress={() => open('budget')} />
       </ListCard>
 
+      <SectionLabel>Training</SectionLabel>
+      <ListCard><ListRow icon="barbell-outline" label="Exercise preferences" value={user.training.enabled ? humanize(user.training.goal) : 'Optional · Set up exercise'} onPress={() => router.push('/training-settings')} /></ListCard>
       <ReminderSettings />
 
       <ThemeSettings />
@@ -153,7 +155,7 @@ export default function SettingsScreen() {
         {draft && editing === 'goal' && (
           <ChipGroup options={GOALS} value={draft.goal} onChange={(v) => set('goal', v)} format={humanize} />
         )}
-        {editing === 'measurements' && <MeasurementsForm initial={prefs} onSaved={close} />}
+        {editing === 'measurements' && <MeasurementsForm initial={user.body} onSaved={close} />}
         {draft && editing === 'budget' && (
           <ChipGroup options={BUDGETS} value={draft.budget} onChange={(v) => set('budget', v)} format={humanize} />
         )}

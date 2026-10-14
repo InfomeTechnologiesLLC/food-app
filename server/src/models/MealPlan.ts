@@ -53,8 +53,8 @@ const mealPlanSchema = new Schema(
   {
     userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
     title: { type: String, required: true },
-    // draft = generated but not added yet; a user has at most one active plan
-    status: { type: String, enum: ["draft", "active"], default: "draft", index: true },
+    // Only accepted plans are stored; a user has at most one active plan
+    status: { type: String, enum: ["active"], default: "active", index: true },
     startDate: String,
     days: [{ day: { type: Number, required: true, min: 1 }, date: String, meals: [mealSchema] }],
     settingsSnapshot: { type: new Schema({
@@ -62,9 +62,8 @@ const mealPlanSchema = new Schema(
       allergies: { type: [String], required: true },
       goal: { type: String, required: true },
       budget: { type: String, required: true },
-      heightCm: { type: Number, default: null },
-      weightKg: { type: Number, default: null },
-      weightUpdatedAt: { type: Date, default: null },
+      body: { heightCm: { type: Number, default: null }, weightKg: { type: Number, default: null }, weightUpdatedAt: { type: Date, default: null } },
+      trainingContext: { type: Schema.Types.Mixed, default: null },
       mealTypes: { type: [String], required: true },
       maxExtraItems: { type: Number, default: null },
     }, { _id: false }), required: true },

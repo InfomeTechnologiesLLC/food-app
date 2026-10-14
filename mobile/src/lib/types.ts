@@ -1,5 +1,7 @@
+import type { TrainingPreferences } from './exercise-types';
+
 export type Diet = 'none' | 'vegetarian' | 'vegan' | 'pescatarian' | 'keto' | 'halal' | 'kosher';
-export type Goal = 'balanced' | 'weight_loss' | 'muscle_gain' | 'budget';
+export type Goal = 'balanced' | 'weight_loss' | 'muscle_gain';
 export type Budget = 'low' | 'medium' | 'high';
 
 export interface Preferences {
@@ -7,6 +9,9 @@ export interface Preferences {
   allergies: string[];
   goal: Goal;
   budget: Budget;
+}
+
+export interface BodyMeasurements {
   heightCm?: number | null;
   weightKg?: number | null;
   weightUpdatedAt?: string | null;
@@ -18,6 +23,8 @@ export interface User {
   plan: 'free' | 'plus';
   onboarded: boolean;
   preferences: Preferences;
+  body: BodyMeasurements;
+  training: TrainingPreferences;
   usage: { scansThisMonth: number; plansThisMonth: number };
   /** null = unlimited */
   limits: { scansPerMonth: number | null; plansPerMonth: number | null };
@@ -104,8 +111,8 @@ export interface Shortage {
   unitMismatch: boolean;
 }
 
-/** draft = generated but not added yet; there's at most one active plan */
-export type PlanStatus = 'draft' | 'active';
+/** Only the accepted plan is stored. */
+export type PlanStatus = 'active';
 
 export interface ShoppingItem {
   _id: string;

@@ -15,7 +15,7 @@ export function BmiCard() {
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   if (!user) return null;
-  const prefs = user.preferences;
+  const prefs = user.body;
   const bmi = calculateBmi(prefs.heightCm, prefs.weightKg);
   return (
     <>

@@ -1,7 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FloatingActions } from '@/components/floating-actions';
 
 import { PantryRow } from '@/components/pantry-row';
 import { Screen } from '@/components/screen';
@@ -30,6 +32,7 @@ export default function PantryScreen() {
   }, [items, search, category]);
 
   return (
+    <View style={styles.page}>
     <Screen scroll={false} edges={['bottom']}>
       <FlatList
         data={filtered}
@@ -38,7 +41,7 @@ export default function PantryScreen() {
         onRefresh={refetch}
         refreshing={isRefetching}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: Spacing.three, gap: Spacing.two, paddingBottom: Spacing.three }}
+        contentContainerStyle={{ padding: Spacing.three, gap: Spacing.two, paddingBottom: 88 }}
         ListHeaderComponent={
           <View style={{ gap: Spacing.three, paddingBottom: Spacing.one }}>
             <View style={styles.topRow}>
@@ -52,12 +55,6 @@ export default function PantryScreen() {
                   style={[styles.searchInput, { color: theme.text }]}
                 />
               </View>
-              <Pressable
-                accessibilityLabel="Add item"
-                onPress={() => router.push('/pantry-item')}
-                style={({ pressed }) => [styles.add, { backgroundColor: theme.tint, opacity: pressed ? 0.8 : 1 }]}>
-                <Ionicons name="add" size={26} color={theme.tintText} />
-              </Pressable>
             </View>
 
             {categories.length > 1 && (
@@ -96,13 +93,24 @@ export default function PantryScreen() {
         }
       />
     </Screen>
+      <FloatingActions>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add item"
+          onPress={() => router.push('/pantry-item')}
+          style={({ pressed }) => [styles.add, { backgroundColor: theme.tint, opacity: pressed ? 0.7 : 1 }]}>
+          <MaterialIcons name="add" size={30} color={theme.tintText} />
+        </Pressable>
+      </FloatingActions>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.two, height: 50, borderRadius: 14, borderWidth: 1, paddingHorizontal: Spacing.three },
   searchInput: { flex: 1, height: '100%', fontSize: 15 },
-  add: { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  add: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.one },
 });

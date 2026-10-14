@@ -7,9 +7,10 @@
     "build": "tsc",
     "test": "node --import tsx --test test/*.test.ts",
     "start": "node dist/index.js",
-    "test:integration": "node --import tsx --test test/stock.integration.ts",
+    "test:integration": "node --import tsx --test test/*.integration.ts",
     "reset:mock": "tsx src/scripts/reset-mock.ts",
-    "seed:kerala": "tsx src/scripts/seed-kerala.ts"
+    "seed:kerala": "tsx src/scripts/seed-kerala.ts",
+    "migrate:exercise": "tsx src/scripts/migrate-exercise-profile.ts"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",

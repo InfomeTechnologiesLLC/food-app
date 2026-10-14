@@ -3,12 +3,12 @@ import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-rout
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AlertHost } from '@/components/themed-alert';
-import { PlanHeader } from '@/components/plan-header';
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { ExerciseProvider } from "@/lib/exercise";
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { Notifications } from '@/lib/notifications';
 
@@ -39,17 +39,13 @@ function RootNavigator() {
         </Stack.Protected>
         <Stack.Protected guard={!!user?.onboarded}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="training-settings" options={{ headerShown: true, title: 'Training preferences' }} />
+          <Stack.Screen name="training-plan/[id]" options={{ headerShown: true, title: 'Workout plan' }} />
+          <Stack.Screen name="workout/[id]" options={{ headerShown: true, title: 'Workout' }} />
+          <Stack.Screen name="workout-history" options={{ headerShown: true, title: 'Workout history' }} />
+          <Stack.Screen name="reauth" options={{ headerShown: true, title: 'Sign in' }} />
           <Stack.Screen name="food-history" options={{ headerShown: true, title: 'Food history' }} />
           <Stack.Screen name="upgrade" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
-          <Stack.Screen name="plan/[id]" options={{
-            headerShown: true,
-            title: 'Meal plan',
-            ...(Platform.OS === 'android' && {
-              header: ({ options, navigation, back }) => (
-                <PlanHeader title={options.title ?? 'Meal plan'} onBack={() => navigation.goBack()} canGoBack={!!back} />
-              ),
-            }),
-          }} />
           <Stack.Screen
             name="pantry-item"
             options={{ presentation: 'modal', headerShown: true, title: 'Pantry item' }}
@@ -100,7 +96,7 @@ export default function RootLayout() {
     <ThemeProvider value={navTheme}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <RootNavigator />
+          <ExerciseProvider><RootNavigator /></ExerciseProvider>
           <AlertHost />
         </AuthProvider>
       </QueryClientProvider>

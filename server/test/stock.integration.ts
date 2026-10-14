@@ -1,4 +1,5 @@
 import "dotenv/config";
+import jwt from "jsonwebtoken";
 import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import mongoose, { Types } from "mongoose";
@@ -99,8 +100,12 @@ test("concurrent cooking cannot double consume and concurrent undo restores stoc
 const mealRecipe = (type: string, title: string, quantity = 1) => ({ type, title, description: title, prepMinutes: 1, calories: 100,
   nutrition: { proteinGrams: 1, carbsGrams: 25, fatGrams: 0 }, ingredients: [{ name: "banana", quantity, unit: "pcs", fromPantry: true }], steps: ["Eat banana"] });
 async function makeDraft(types = ["breakfast", "lunch", "dinner"]) {
-  return MealPlan.create({ userId, title: "Replacement", days: [1, 2].map((day) => ({ day, meals: types.map((type) => mealRecipe(type, `New ${type}`)) })),
+  return new MealPlan({ userId, title: "Replacement", days: [1, 2].map((day) => ({ day, meals: types.map((type) => mealRecipe(type, `New ${type}`)) })),
     settingsSnapshot: { diet: "none", allergies: [], goal: "balanced", budget: "low", mealTypes: types, maxExtraItems: null } });
+}
+function previewToken(plan: InstanceType<typeof MealPlan>) {
+  plan.__v = 0;
+  return jwt.sign({ plan: plan.toObject() }, `${process.env.JWT_SECRET!}:meal-plan-preview`, { subject: userId, audience: "meal-plan-preview", expiresIn: "1h" });
 }
 async function mark(plan: Awaited<ReturnType<typeof makePlan>>, mealId = String(plan.days[0]!.meals[0]!._id), confirm = false) {
   const current = await MealPlan.findById(plan.id);
@@ -118,13 +123,13 @@ test("future marks fail without stock changes, while late logging retains its pl
   assert.equal(entry!.recordedAt.toISOString().slice(0, 10), calendarToday("UTC"));
   assert.equal(await PantryIngredient.countDocuments(), 0);
 });
-test("history survives deletion; activation carries today's eaten slots, including omitted meal types", async () => {
+test("replacement preserves history and carries today's eaten slots, including omitted meal types", async () => {
   const plan = await makePlan(); await addStock(userId, "carry:stock", [item]); await mark(plan);
   const entry = await FoodHistory.findOne({ userId });
-  await invoke(planRoutes, "/:id", "delete", { params: { id: plan.id } });
+  const current = (await MealPlan.findById(plan.id))!;
   assert.equal(await FoodHistory.countDocuments({ reversed: false }), 1); assert.equal(await PantryIngredient.countDocuments(), 0);
   const draft = await makeDraft(["lunch", "dinner"]);
-  const response = await invoke(planRoutes, "/:id/activate", "post", { params: { id: draft.id }, body: target(null) });
+  const response = await invoke(planRoutes, "/replace", "post", { params: { id: draft.id }, body: { ...target(current), previewToken: previewToken(draft) } });
   assert.equal(response.status, 200);
   assert.deepEqual(response.data.days[0].meals.map((m: any) => m.type), ["breakfast", "lunch", "dinner"]);
   assert.equal(String(response.data.days[0].meals[0]._id), String(entry!.mealId));
@@ -137,27 +142,16 @@ test("whole-plan replacement keeps eaten slots once, future days get fresh ident
   const plan = await makePlan(); await addStock(userId, "whole:stock", [item]); await mark(plan);
   const current = (await MealPlan.findById(plan.id))!;
   const draft = await makeDraft(); const originalIds = draft.days[1]!.meals.map((meal) => String(meal._id));
-  const request = { params: { id: draft.id }, body: target(current) };
-  const response = await invoke(planRoutes, "/:id/activate", "post", request);
+  const request = { params: { id: draft.id }, body: { ...target(current), previewToken: previewToken(draft) } };
+  const response = await invoke(planRoutes, "/replace", "post", request);
   assert.equal(response.status, 200); assert.equal(response.data.days[0].meals.filter((meal: any) => meal.type === "breakfast").length, 1);
   assert.equal(response.data.days[0].meals[0].title, "Banana");
   assert.equal(response.data.days[1].date, addDays(calendarToday("UTC"), 1));
   assert.equal(response.data.days[1].meals.some((meal: any) => originalIds.includes(String(meal._id))), false);
-  assert.equal((await invoke(planRoutes, "/:id/activate", "post", request)).status, 200);
+  assert.equal((await invoke(planRoutes, "/replace", "post", request)).status, 200);
   assert.equal(await MealPlan.countDocuments({ status: "active" }), 1); assert.equal(await FoodHistory.countDocuments({ reversed: false }), 1);
 });
-test("replacing today preserves eaten meals, rejects stale requests and forbids past replacement", async () => {
-  const plan = await makePlan(); plan.days[0]!.meals.push(mealRecipe("lunch", "Old lunch")); await plan.save();
-  await addStock(userId, "partial:stock", [item]); await mark(plan);
-  const current = (await MealPlan.findById(plan.id))!; const draft = await makeDraft();
-  const request = { params: { id: draft.id }, body: { ...target(current), fromDay: 1, toDay: 1 } };
-  const response = await invoke(planRoutes, "/:id/replace-day", "post", request);
-  assert.equal(response.status, 200); assert.equal(response.data.days[0].meals[0].title, "Banana");
-  assert.equal(response.data.days[0].meals[1].title, "New lunch"); assert.equal(response.data.totalMeals, 2);
-  assert.equal((await invoke(planRoutes, "/:id/replace-day", "post", request)).status, 409);
-  const past = (await MealPlan.findById(plan.id))!; past.days[0]!.date = addDays(calendarToday("UTC"), -1); await past.save();
-  assert.equal((await invoke(planRoutes, "/:id/replace-day", "post", { ...request, body: { ...target(past), fromDay: 1, toDay: 1 } })).status, 409);
-});
+
 test("shortage confirmation records only actual deductions; old undo cannot reverse a later re-log", async () => {
   const plan = await makePlan(); await addStock(userId, "short:stock", [{ ...item, quantity: 1 }]);
   assert.equal((await mark(plan)).status, 409); assert.equal(await FoodHistory.countDocuments(), 0);
@@ -187,9 +181,9 @@ test("history pagination has complete daily totals, hides deductions, validates 
 test("concurrent replacement and mark either preserve the eaten recipe or reject its stale ID", async () => {
   const plan = await makePlan(); const draft = await makeDraft(); await addStock(userId, "race:stock", [item]);
   const [eaten, replaced] = await Promise.all([
-    mark(plan), invoke(planRoutes, "/:id/replace-day", "post", { params: { id: draft.id }, body: { ...target(plan), fromDay: 1, toDay: 1 } }),
+    mark(plan), invoke(planRoutes, "/replace", "post", { params: { id: draft.id }, body: { ...target(plan), previewToken: previewToken(draft) } }),
   ]);
-  const saved = (await MealPlan.findById(plan.id))!;
+  const saved = (await MealPlan.findOne({ userId, status: "active" }))!;
   if (eaten.status === 200) {
     assert.equal(saved.days[0]!.meals[0]!.title, "Banana"); assert.equal(saved.days[0]!.meals[0]!.eaten, true);
     assert.equal(replaced.status, 409);
@@ -200,47 +194,23 @@ test("concurrent replacement and mark either preserve the eaten recipe or reject
 });
 test("concurrent activation yields one active plan and a refreshable conflict", async () => {
   const a = await makeDraft(); const b = await makeDraft();
-  const outcomes = await Promise.all([a, b].map((draft) => invoke(planRoutes, "/:id/activate", "post", { params: { id: draft.id }, body: target(null) })));
+  const outcomes = await Promise.all([a, b].map((draft) => invoke(planRoutes, "/replace", "post", { body: { ...target(null), previewToken: previewToken(draft) } })));
   assert.deepEqual(outcomes.map((result) => result.status).sort(), [200, 409]); assert.equal(await MealPlan.countDocuments({ status: "active" }), 1);
 });
-test("adding days after an ended plan starts today with fresh meal IDs and stale retries cannot duplicate days", async () => {
-  const plan = await makePlan(); plan.startDate = addDays(calendarToday("UTC"), -3); plan.days[0]!.date = plan.startDate; await plan.save();
-  const draft = await makeDraft(); const ids = draft.days[0]!.meals.map((meal) => String(meal._id));
-  const request = { params: { id: draft.id }, body: { ...target(plan), days: [1] } };
-  const response = await invoke(planRoutes, "/:id/merge", "post", request);
-  assert.equal(response.status, 200); assert.equal(response.data.days[1].date, calendarToday("UTC"));
-  assert.equal(response.data.days[1].meals.some((meal: any) => ids.includes(String(meal._id))), false);
-  assert.equal((await invoke(planRoutes, "/:id/merge", "post", request)).status, 409);
-});
-test("undo after plan removal restores stock once without resurrecting the schedule", async () => {
-  const plan = await makePlan(); await addStock(userId, "removed:stock", [item]); await mark(plan);
+
+test("undo past history after replacement restores stock once without restoring the old plan", async () => {
+  const plan = await makePlan();
+  plan.days[0]!.date = addDays(calendarToday("UTC"), -1); await plan.save();
+  await addStock(userId, "removed:stock", [item]); await mark(plan);
   const entry = (await FoodHistory.findOne({ userId }))!;
-  await invoke(planRoutes, "/:id", "delete", { params: { id: plan.id } });
+  const current = (await MealPlan.findById(plan.id))!;
+  const draft = await makeDraft();
+  assert.equal((await invoke(planRoutes, "/replace", "post", { body: { ...target(current), previewToken: previewToken(draft) } })).status, 200);
   const request = { params: { id: String(entry._id) } };
   await Promise.all([invoke(historyRoutes, "/:id/undo", "post", request), invoke(historyRoutes, "/:id/undo", "post", request)]);
-  assert.equal(await MealPlan.countDocuments(), 0); assert.equal(await FoodHistory.countDocuments({ reversed: false }), 0);
+  assert.equal(await MealPlan.findById(plan.id), null); assert.equal(await MealPlan.countDocuments(), 1);
+  assert.equal(await FoodHistory.countDocuments({ reversed: false }), 0);
   assert.equal(presentIngredient((await readPantry(userId))[0]!).totals[0]!.quantity, 3);
-});
-test("concurrent deletion and marking leave a complete history entry or unchanged stock", async () => {
-  const plan = await makePlan(); await addStock(userId, "delete-race:stock", [item]);
-  const [result] = await Promise.all([mark(plan), invoke(planRoutes, "/:id", "delete", { params: { id: plan.id } })]);
-  assert.equal(await MealPlan.countDocuments(), 0);
-  if (result.status === 200) {
-    assert.equal(await FoodHistory.countDocuments({ reversed: false }), 1); assert.equal(await PantryIngredient.countDocuments(), 0);
-  } else {
-    assert.equal(result.status, 404); assert.equal(await FoodHistory.countDocuments(), 0);
-    assert.equal(presentIngredient((await readPantry(userId))[0]!).totals[0]!.quantity, 3);
-  }
-});
-test("replacement rejects unchanged recipes and all-protected slots without changing identities", async () => {
-  const plan = await makePlan(); const draft = await makeDraft(["breakfast"]);
-  draft.days[0]!.set("meals", [{ ...plan.days[0]!.meals[0]!.toObject(), _id: new Types.ObjectId() }]); await draft.save();
-  const oldId = String(plan.days[0]!.meals[0]!._id);
-  const response = await invoke(planRoutes, "/:id/replace-day", "post", { params: { id: draft.id }, body: { ...target(plan), fromDay: 1, toDay: 1 } });
-  assert.equal(response.status, 409); assert.equal(String((await MealPlan.findById(plan.id))!.days[0]!.meals[0]!._id), oldId);
-  await addStock(userId, "protected:stock", [item]); await mark(plan);
-  const current = (await MealPlan.findById(plan.id))!;
-  assert.equal((await invoke(planRoutes, "/:id/replace-day", "post", { params: { id: draft.id }, body: { ...target(current), fromDay: 1, toDay: 1 } })).status, 409);
 });
 test("development mock reset removes domain data and preserves account preferences; production reset is refused", async () => {
   const { execFile } = await import("node:child_process");
@@ -262,10 +232,10 @@ test("development mock reset removes domain data and preserves account preferenc
 test("whole-plan replacement refuses a schedule containing only the same protected eaten meals", async () => {
   const plan = await makePlan(); await addStock(userId, "whole-noop:stock", [item]); await mark(plan);
   const current = (await MealPlan.findById(plan.id))!;
-  const draft = await makeDraft(["breakfast"]); draft.days.splice(1); await draft.save();
-  const response = await invoke(planRoutes, "/:id/activate", "post", { params: { id: draft.id }, body: target(current) });
+  const draft = await makeDraft(["breakfast"]); draft.days.splice(1);
+  const response = await invoke(planRoutes, "/replace", "post", { params: { id: draft.id }, body: { ...target(current), previewToken: previewToken(draft) } });
   assert.equal(response.status, 409); assert.equal((await MealPlan.findById(plan.id))!.status, "active");
-  assert.equal((await MealPlan.findById(draft.id))!.status, "draft"); assert.equal(await FoodHistory.countDocuments({ reversed: false }), 1);
+  assert.equal(await MealPlan.findById(draft.id), null); assert.equal(await FoodHistory.countDocuments({ reversed: false }), 1);
 });
 test("a delayed mark retry after undo cannot log the meal again", async () => {
   const plan = await makePlan(); await addStock(userId, "delayed:stock", [item]);
@@ -277,4 +247,17 @@ test("a delayed mark retry after undo cannot log the meal again", async () => {
   assert.equal(await FoodHistory.countDocuments({ reversed: false }), 0);
   assert.equal(presentIngredient((await readPantry(userId))[0]!).totals[0]!.quantity, 3);
   assert.equal((await mark(plan)).status, 200);
+});
+
+test("previews are not stored, cannot be tampered with, and are bound to their user", async () => {
+  const preview = await makeDraft();
+  assert.equal(await MealPlan.countDocuments(), 0);
+  const token = previewToken(preview);
+  assert.equal((await invoke(planRoutes, "/replace", "post", { body: { ...target(null), previewToken: token + "x" } })).status, 400);
+  assert.equal((await invoke(planRoutes, "/replace", "post", { userId: String(new Types.ObjectId()), body: { ...target(null), previewToken: token } })).status, 400);
+  const expired = jwt.sign({ plan: preview.toObject() }, `${process.env.JWT_SECRET!}:meal-plan-preview`, { subject: userId, audience: "meal-plan-preview", expiresIn: -1 });
+  assert.equal((await invoke(planRoutes, "/replace", "post", { body: { ...target(null), previewToken: expired } })).status, 400);
+  assert.equal(await MealPlan.countDocuments(), 0);
+  assert.equal((await invoke(planRoutes, "/replace", "post", { body: { ...target(null), previewToken: token } })).status, 200);
+  assert.equal(await MealPlan.countDocuments(), 1);
 });

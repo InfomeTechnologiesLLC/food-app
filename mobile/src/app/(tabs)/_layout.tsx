@@ -21,7 +21,9 @@ const tab = (title: string, icon: IconName) => ({
 
 /** Header text per tab path; anything unlisted shows the brand name. */
 const HEADER_TITLES: Record<string, string> = {
-  '/plans': 'Meal plans',
+  '/plans': 'Meals',
+  '/exercise': 'Exercise',
+  '/': 'Today',
   '/pantry': 'Pantry',
   '/settings': 'Profile',
 };
@@ -57,9 +59,10 @@ export default function TabsLayout() {
           tabBarInactiveTintColor: theme.textSecondary,
           tabBarStyle: { backgroundColor: theme.background, borderTopColor: theme.border },
         }}>
-        <Tabs.Screen name="index" options={tab('Home', 'home-outline')} />
-        <Tabs.Screen name="scan" options={tab('Scan', 'camera-outline')} />
-        <Tabs.Screen name="plans" options={tab('Plans', 'restaurant-outline')} />
+        <Tabs.Screen name="index" options={tab('Today', 'home-outline')} />
+        <Tabs.Screen name="scan" options={{ href: null }} />
+        <Tabs.Screen name="plans" options={tab('Meals', 'restaurant-outline')} />
+        <Tabs.Screen name="exercise" options={tab('Exercise', 'barbell-outline')} />
         <Tabs.Screen name="pantry" options={tab('Pantry', 'basket-outline')} />
         <Tabs.Screen name="settings" options={tab('Profile', 'person-outline')} />
       </Tabs>

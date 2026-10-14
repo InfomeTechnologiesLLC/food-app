@@ -20,6 +20,7 @@ export async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<
       const retryable = status === 429 || status === 503;
       if (!retryable || i >= attempts - 1) {
         if (status === 429) throw new AIError("The AI is busy right now (rate limit). Please try again in a minute.", 429);
+        if (status === 503) throw new AIError("The AI is temporarily unavailable. Please try again in a minute.", 503);
         throw err;
       }
       await new Promise((r) => setTimeout(r, 1000 * 2 ** i));

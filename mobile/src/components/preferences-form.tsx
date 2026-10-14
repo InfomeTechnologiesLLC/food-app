@@ -6,23 +6,24 @@ import { parseMeasurements } from '@/lib/measurements';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Chip, ChipGroup, Input, Section, humanize } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import type { Budget, Diet, Goal, Preferences } from '@/lib/types';
+import type { BodyMeasurements, Budget, Diet, Goal, Preferences } from '@/lib/types';
 
 export const DIETS: Diet[] = ['none', 'vegetarian', 'vegan', 'pescatarian', 'keto', 'halal', 'kosher'];
-export const GOALS: Goal[] = ['balanced', 'weight_loss', 'muscle_gain', 'budget'];
+export const GOALS: Goal[] = ['balanced', 'weight_loss', 'muscle_gain'];
 export const BUDGETS: Budget[] = ['low', 'medium', 'high'];
 export const COMMON_ALLERGIES = ['peanuts', 'tree nuts', 'milk', 'eggs', 'gluten', 'soy', 'fish', 'shellfish', 'sesame'];
 
 export function PreferencesForm({
-  initial, submitLabel, onSubmit,
+  initial, body, submitLabel, onSubmit,
 }: {
   initial: Preferences;
+  body: BodyMeasurements;
   submitLabel: string;
-  onSubmit: (prefs: Preferences) => Promise<void>;
+  onSubmit: (prefs: Preferences, body: BodyMeasurements) => Promise<void>;
 }) {
   const [prefs, setPrefs] = useState(initial);
-  const [height, setHeight] = useState(initial.heightCm?.toString() ?? "");
-  const [weight, setWeight] = useState(initial.weightKg?.toString() ?? "");
+  const [height, setHeight] = useState(body.heightCm?.toString() ?? "");
+  const [weight, setWeight] = useState(body.weightKg?.toString() ?? "");
   const [customAllergy, setCustomAllergy] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +43,7 @@ export function PreferencesForm({
     setSaving(true);
     setError(null);
     try {
-      await onSubmit({ ...prefs, ...parseMeasurements(height, weight) });
+      await onSubmit(prefs, parseMeasurements(height, weight));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -73,7 +74,7 @@ export function PreferencesForm({
         />
       </Section>
 
-      <Section title="Health goal">
+      <Section title="Nutrition goal">
         <ChipGroup options={GOALS} value={prefs.goal} onChange={(v) => set('goal', v)} format={humanize} />
       </Section>
 

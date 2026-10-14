@@ -37,7 +37,6 @@ export default function FoodHistoryScreen() {
         ListHeaderComponent={
           <View style={{ gap: Spacing.three, paddingBottom: Spacing.three }}>
             <Button title={todayOnly ? 'Show all dates' : 'Show today only'} variant="secondary" onPress={() => setTodayOnly(!todayOnly)} />
-            <ThemedText type="small" themeColor="textSecondary">Meals appear on their planned date, even when logged later. Nutrition is estimated per serving.</ThemedText>
             {history.isLoading && <ActivityIndicator />}
             {history.error && <><ThemedText themeColor="danger">{history.error.message}</ThemedText><Button title="Try again" onPress={() => history.refetch()} /></>}
             {undo.error && <ThemedText themeColor="danger">{undo.error.message}</ThemedText>}

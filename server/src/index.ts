@@ -10,6 +10,7 @@ import scanRoutes from "./routes/scans.js";
 import { StockConflict } from "./lib/add-stock.js";
 import planRoutes from "./routes/plans.js";
 
+import exerciseRoutes from "./routes/exercise.js";
 import historyRoutes from "./routes/history.js";
 import { ScheduleConflict } from "./lib/schedule.js";
 
@@ -26,6 +27,7 @@ app.use("/pantry", pantryRoutes);
 app.use("/scans", scanRoutes);
 app.use("/plans", planRoutes);
 app.use("/food-history", historyRoutes);
+app.use("/exercise", exerciseRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 

@@ -40,6 +40,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     ['expo-splash-screen', { backgroundColor: BRAND_GREEN, image: './assets/images/splash-icon.png', imageWidth: 200 }],
     'expo-secure-store',
+    'expo-sqlite',
     '@react-native-community/datetimepicker',
     [
       'expo-image-picker',

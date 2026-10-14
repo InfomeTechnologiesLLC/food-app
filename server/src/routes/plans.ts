@@ -1,3 +1,4 @@
+import jwt from "jsonwebtoken";
 import { Router } from "express";
 import { z } from "zod";
 import mongoose, { isValidObjectId, type Types } from "mongoose";
@@ -13,6 +14,7 @@ import { MealPlan, type PlanData, mealSchema } from "../models/MealPlan.js";
 import { PantryIngredient } from "../models/PantryIngredient.js";
 import { pantryStock, readPantry } from "../lib/pantry.js";
 import { StockOperation } from "../models/StockOperation.js";
+import { WorkoutPlan } from "../models/Workout.js";
 import { User } from "../models/User.js";
 
 import { calendarToday, addDays, timezoneSchema } from "../lib/calendar.js";
@@ -59,27 +61,32 @@ router.post("/", async (req: AuthRequest, res) => {
     const now = Date.now();
     const prefs = user!.preferences!;
 
+    const activeWorkout = await WorkoutPlan.findOne({ userId: req.userId, status: 'active' }).lean();
+    const trainingContext = activeWorkout ? { goal: user!.training!.goal, days: activeWorkout.days.map(d => ({ date: d.date, title: d.title, exercises: d.exercises.map(e => ({ exerciseId: e.exerciseId, sets: e.sets, durationSeconds: e.durationSeconds })) })) } : null;
     const plan = await generatePlan({
       days: parsed.data.days,
       // Keep the requested meal order consistent (breakfast → snack)
       mealTypes: MEAL_TYPES.filter((t) => parsed.data.mealTypes.includes(t)),
       maxExtraItems: parsed.data.maxExtraItems,
-      prefs: { diet: prefs.diet!, allergies: prefs.allergies ?? [], goal: prefs.goal!, budget: prefs.budget!, heightCm: prefs.heightCm, weightKg: prefs.weightKg },
+      prefs: { diet: prefs.diet!, allergies: prefs.allergies ?? [], goal: prefs.goal!, budget: prefs.budget!, heightCm: user!.body?.heightCm, weightKg: user!.body?.weightKg },
+      trainingContext,
       pantry: pantry.flatMap((ingredient) => ingredient.batches.map((batch) => ({
         name: ingredient.name, quantity: batch.quantity, unit: batch.unit,
         expiresInDays: batch.expiryDate ? Math.round((batch.expiryDate.getTime() - now) / 86_400_000) : null,
       }))),
     });
 
-    // Saved as a draft: the user decides whether and how it goes into their plan
-    const saved = await MealPlan.create({
+    // Build a preview in memory; only an accepted plan is persisted.
+    const saved = new MealPlan({
       userId: req.userId,
       title: plan.title,
-      status: "draft",
+      status: "active",
       days: plan.days,
-      settingsSnapshot: { ...prefs, mealTypes: parsed.data.mealTypes, maxExtraItems: parsed.data.maxExtraItems },
+      settingsSnapshot: { ...prefs, body: user!.body, trainingContext, mealTypes: parsed.data.mealTypes, maxExtraItems: parsed.data.maxExtraItems },
     });
-    res.status(201).json(await presentPlan(saved.toObject(), await pantryFor(req.userId!)));
+    saved.__v = 0;
+    const previewToken = jwt.sign({ plan: saved.toObject() }, `${process.env.JWT_SECRET!}:meal-plan-preview`, { subject: req.userId!, audience: "meal-plan-preview", expiresIn: "1h" });
+    res.json({ ...await presentPlan(saved.toObject(), await pantryFor(req.userId!)), previewToken });
   } catch (err) {
     await refundUsage(req.userId!, "plansThisMonth");
     if (err instanceof AIError) return res.status(err.status).json({ error: err.message });
@@ -90,7 +97,7 @@ router.post("/", async (req: AuthRequest, res) => {
 
 router.get("/", async (req: AuthRequest, res) => {
   const [plans, pantry] = await Promise.all([
-    MealPlan.find({ userId: req.userId })
+    MealPlan.find({ userId: req.userId, status: "active" })
       .sort({ createdAt: -1 })
       .select("__v title status startDate createdAt days.day days.meals.ingredients days.meals.eaten settingsSnapshot.maxExtraItems")
       .lean(),
@@ -155,14 +162,19 @@ function freshMeals(meals: PlanDoc["days"][number]["meals"]) {
   return meals.map((meal) => ({ ...meal.toObject(), _id: new mongoose.Types.ObjectId(), eaten: false, historyEntryId: null }));
 }
 
-router.post("/:id/activate", async (req: AuthRequest, res) => {
-  const body = targetSchema.safeParse(req.body);
+router.post("/replace", async (req: AuthRequest, res) => {
+  const body = targetSchema.extend({ previewToken: z.string().min(1) }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: "Invalid request" });
-  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
+  let preview: jwt.JwtPayload;
+  try {
+    preview = jwt.verify(body.data.previewToken, `${process.env.JWT_SECRET!}:meal-plan-preview`, { audience: "meal-plan-preview", subject: req.userId!, algorithms: ["HS256"] }) as jwt.JwtPayload;
+  } catch {
+    return res.status(400).json({ error: "This preview has expired. Generate a new plan." });
+  }
   const plan = await scheduleTransaction(req.userId!, async (session) => {
-    const draft = await MealPlan.findOne({ _id: req.params.id, userId: req.userId }).session(session);
-    if (!draft) throw new ScheduleConflict("Plan not found", 404);
-    if (draft.status === "active") return draft;
+    const draft = new MealPlan(preview.plan);
+    const accepted = await MealPlan.findOne({ _id: draft._id, userId: req.userId }).session(session);
+    if (accepted) return accepted;
     const active = await currentTarget(req.userId!, body.data, session);
     const today = calendarToday(body.data.timezone);
     const entries = await FoodHistory.find({ userId: req.userId, date: today, reversed: false }).session(session).lean();
@@ -182,57 +194,6 @@ router.post("/:id/activate", async (req: AuthRequest, res) => {
     return draft;
   });
   await respondWith(res, plan, req.userId!);
-});
-
-router.post("/:id/merge", async (req: AuthRequest, res) => {
-  const body = targetSchema.extend({ days: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
-  if (!body.success) return res.status(400).json({ error: "Pick at least one day to add." });
-  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
-  const active = await scheduleTransaction(req.userId!, async (session) => {
-    const draft = await MealPlan.findOne({ _id: req.params.id, userId: req.userId, status: "draft" }).session(session);
-    if (!draft) throw new ScheduleConflict("Draft not found", 404);
-    const active = await currentTarget(req.userId!, body.data, session);
-    if (!active) throw new ScheduleConflict("You don't have a current plan.");
-    const picked = draft.days.filter((day) => body.data.days.includes(day.day)).sort((a, b) => a.day - b.day);
-    if (picked.length !== new Set(body.data.days).size) throw new ScheduleConflict("Day not found", 404);
-    const last = active.days.reduce((a, b) => a.day > b.day ? a : b);
-    const today = calendarToday(body.data.timezone);
-    let date = addDays(last.date!, 1);
-    if (date < today) date = today;
-    let next = Math.round((new Date(date).getTime() - new Date(active.startDate!).getTime()) / 86400000) + 1;
-    for (const day of picked) {
-      active.days.push({ day: next++, date, meals: freshMeals(day.meals) });
-      date = addDays(date, 1);
-    }
-    await active.save({ session });
-    return active;
-  });
-  await respondWith(res, active, req.userId!);
-});
-
-router.post("/:id/replace-day", async (req: AuthRequest, res) => {
-  const body = targetSchema.extend({ fromDay: z.number().int(), toDay: z.number().int() }).safeParse(req.body);
-  if (!body.success) return res.status(400).json({ error: "Invalid request" });
-  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
-  const active = await scheduleTransaction(req.userId!, async (session) => {
-    const draft = await MealPlan.findOne({ _id: req.params.id, userId: req.userId, status: "draft" }).session(session);
-    if (!draft) throw new ScheduleConflict("Draft not found", 404);
-    const active = await currentTarget(req.userId!, body.data, session);
-    if (!active) throw new ScheduleConflict("You don't have a current plan.");
-    const from = draft.days.find((day) => day.day === body.data.fromDay);
-    const to = active.days.find((day) => day.day === body.data.toDay);
-    if (!from || !to) throw new ScheduleConflict("Day not found", 404);
-    if (to.date! < calendarToday(body.data.timezone)) throw new ScheduleConflict("Past days cannot be replaced.");
-    const kept = to.meals.filter((meal) => meal.eaten);
-    const types = new Set(kept.map((meal) => meal.type));
-    const incoming = freshMeals(from.meals).filter((meal) => !types.has(meal.type));
-    const next = orderedMeals([...kept.map((meal) => meal.toObject()), ...incoming]);
-    if (JSON.stringify(orderedMeals(to.meals.map((meal) => meal.toObject())).map(recipeKey)) === JSON.stringify(next.map(recipeKey))) throw new ScheduleConflict("That replacement would not change any meals.");
-    to.set("meals", next);
-    await active.save({ session });
-    return active;
-  });
-  await respondWith(res, active, req.userId!);
 });
 
 router.post("/:id/meals/:mealId/eaten", async (req: AuthRequest, res) => {
@@ -262,14 +223,6 @@ router.post("/:id/meals/:mealId/eaten", async (req: AuthRequest, res) => {
     if (error instanceof PantryShortage) return res.status(409).json({ error: error.message, code: "SHORTAGE", shortages: error.shortages });
     throw error;
   }
-});
-
-router.delete("/:id", async (req: AuthRequest, res) => {
-  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Plan not found" });
-  await scheduleTransaction(req.userId!, async (session) => {
-    await MealPlan.deleteOne({ _id: req.params.id, userId: req.userId }, { session });
-  });
-  res.status(204).end();
 });
 
 export default router;
