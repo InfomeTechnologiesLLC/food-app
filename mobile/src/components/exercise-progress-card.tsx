@@ -7,7 +7,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useExercise, useWorkoutPlans } from '@/lib/exercise';
 
-export function ExerciseProgressCard({ date }: { date: string }) {
+export function ExerciseProgressCard({ date, embedded = false }: { date: string; embedded?: boolean }) {
   const theme = useTheme();
   const plans = useWorkoutPlans();
   const { sessions, sync } = useExercise();
@@ -33,9 +33,9 @@ export function ExerciseProgressCard({ date }: { date: string }) {
   const openExercise = () => router.navigate('/exercise');
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+    <View style={embedded ? styles.section : [styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
       <View style={styles.row}>
-        <ThemedText style={{ fontSize: 17, fontWeight: 700 }}>Today’s exercise</ThemedText>
+        <ThemedText style={{ fontSize: 17, fontWeight: 700 }}>{embedded ? 'Exercise' : 'Today’s exercise'}</ThemedText>
         <Ionicons name="fitness-outline" size={20} color={theme.tint} />
       </View>
 
@@ -92,6 +92,7 @@ export function ExerciseProgressCard({ date }: { date: string }) {
 }
 
 const styles = StyleSheet.create({
+  section: { gap: Spacing.two },
   card: { borderRadius: 20, padding: Spacing.three, gap: Spacing.two, borderWidth: 1 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   summary: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },

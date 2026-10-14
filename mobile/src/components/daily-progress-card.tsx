@@ -8,7 +8,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { dailyProgress } from '@/lib/daily-progress';
 import type { MealPlan, NutritionTotals } from '@/lib/types';
 
-export function DailyProgressCard({ plan, history, date, loading, error, onRetry }: {
+export function DailyProgressCard({ plan, history, date, loading, error, onRetry, embedded = false }: {
+  embedded?: boolean;
   plan?: MealPlan;
   date: string;
   history?: NutritionTotals;
@@ -22,9 +23,9 @@ export function DailyProgressCard({ plan, history, date, loading, error, onRetry
   const openMeals = () => router.navigate('/plans');
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+    <View style={embedded ? styles.section : [styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
       <View style={styles.row}>
-        <ThemedText style={{ fontSize: 17, fontWeight: 700 }}>Today’s progress</ThemedText>
+        <ThemedText style={{ fontSize: 17, fontWeight: 700 }}>{embedded ? 'Nutrition' : 'Today’s progress'}</ThemedText>
         <Ionicons name="restaurant-outline" size={20} color={theme.tint} />
       </View>
       {loading ? (
@@ -86,6 +87,7 @@ export function DailyProgressCard({ plan, history, date, loading, error, onRetry
 }
 
 const styles = StyleSheet.create({
+  section: { gap: Spacing.two },
   card: { borderRadius: 20, padding: Spacing.three, gap: Spacing.two, borderWidth: 1 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },

@@ -125,20 +125,26 @@ export default function HomeScreen() {
         )}
       </View>
 
-      <DailyProgressCard
-        date={date}
-        plan={currentPlan}
-        history={history.data?.totals[date]}
-        loading={plansLoading || planLoading || history.isLoading}
-        error={plansError ?? planError ?? history.error}
-        onRetry={refresh}
-      />
-      <ExerciseProgressCard date={date} />
+      <View style={[styles.progressCard, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+        <ThemedText style={{ fontSize: 20, fontWeight: 700 }}>Today’s progress</ThemedText>
+        <DailyProgressCard
+          embedded
+          date={date}
+          plan={currentPlan}
+          history={history.data?.totals[date]}
+          loading={plansLoading || planLoading || history.isLoading}
+          error={plansError ?? planError ?? history.error}
+          onRetry={refresh}
+        />
+        <View style={{ height: 1, backgroundColor: theme.border }} />
+        <ExerciseProgressCard embedded date={date} />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  progressCard: { borderRadius: 20, padding: Spacing.three, gap: Spacing.three, borderWidth: 1 },
   row: { flexDirection: 'row', alignItems: 'center' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   tile: { borderRadius: 20, padding: Spacing.three },
