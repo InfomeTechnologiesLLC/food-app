@@ -22,7 +22,6 @@ export default function ExerciseScreen() {
   const today = localDate(); const weekStart = new Date(`${today}T12:00:00`); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
   const startDay = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
   const totals = weeklyWorkoutTotals(sessions.map(r => r.session), startDay, today);
-  const activeSession = sessions.find(s => s.session.status === 'in_progress');
   const pending = sessions.filter(s => s.pending).length;
   const generate = async () => {
     setBusy(true); setError('');
@@ -33,9 +32,29 @@ export default function ExerciseScreen() {
     try { const id = start({ date: today, title: 'Walking', explanation: 'Manually logged activity', exercises: [{ exerciseId: 'walk', sets: 1, repsMin: null, repsMax: null, durationSeconds: 600, restSeconds: 30 }] }, library.data ?? [], null); router.push({ pathname: '/workout/[id]', params: { id } }); } catch (e) { setError((e as Error).message); }
   };
   return <View style={styles.page}><Screen edges={['bottom']}>
-    <ThemedText themeColor="textSecondary">{totals.workouts} workouts · {totals.completedSets} sets · {Math.round(totals.minutes)} logged minutes this week</ThemedText>
+    <View style={styles.weeklySummary}>
+      <ThemedText type="smallBold">This week</ThemedText>
+      <View style={styles.metrics}>
+        {([
+          { label: 'Workouts', value: totals.workouts, icon: 'fitness-center' },
+          { label: 'Sets', value: totals.completedSets, icon: 'done-all' },
+          { label: 'Minutes', value: Math.round(totals.minutes), icon: 'timer' },
+        ] as const).map(({ label, value, icon }) => (
+          <View
+            key={label}
+            accessible
+            accessibilityLabel={`${value} ${label.toLowerCase()} ${label === 'Minutes' ? 'logged ' : ''}this week`}
+            style={[styles.metricCard, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+            <View style={styles.metricTopRow}>
+              <MaterialIcons name={icon} size={22} color={theme.tint} />
+              <ThemedText style={styles.metricValue}>{value}</ThemedText>
+            </View>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.metricLabel}>{label}</ThemedText>
+          </View>
+        ))}
+      </View>
+    </View>
     {needsSignIn && <Button title="Sign in again to sync" onPress={() => router.push('/reauth')} />}
-    {activeSession && <Button title={`Resume ${activeSession.session.title}`} onPress={() => router.push({ pathname: '/workout/[id]', params: { id: activeSession.session._id } })} />}
     {!!pending && <Button title={`${pending} workout${pending === 1 ? '' : 's'} waiting to sync · Retry`} variant="secondary" onPress={() => void sync()} loading={syncing} />}
     {user?.training.enabled ? <>
       <Input label="Week starts (YYYY-MM-DD)" value={startDate} onChangeText={setStartDate} />
@@ -71,6 +90,12 @@ export default function ExerciseScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
+  weeklySummary: { gap: 12 },
+  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  metricCard: { flexGrow: 1, flexBasis: 90, minWidth: 90, borderRadius: 16, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  metricTopRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  metricValue: { fontSize: 30, lineHeight: 36, fontWeight: 700, fontVariant: ['tabular-nums'] },
+  metricLabel: { fontSize: 13, textAlign: 'center' },
   actionSpace: { height: 136 },
   actionButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });
