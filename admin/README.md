@@ -14,4 +14,4 @@ Run `npm run typecheck` for TypeScript checks and `npm run build` to create the 
 
 For the existing Express host, build both `admin/` and `server/`, then start the server with `NODE_ENV=production` over HTTPS. It serves `admin/dist` at `/admin/`, including direct links to user pages. Production login cookies require HTTPS. Deploy both folders together so the server can find the frontend bundle.
 
-The portal displays stored MongoDB records only, including debug JSON. Credentials and push tokens are excluded. Unsynced phone-only activity and deleted plans are unavailable. There are no user-data editing or export actions.
+The portal displays stored database (MySQL) records only, including debug JSON. Credentials and push tokens are excluded. Unsynced phone-only activity and deleted plans are unavailable. There are no user-data editing or export actions.

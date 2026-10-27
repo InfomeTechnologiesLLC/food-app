@@ -2,12 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import express, { type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
-import { Types } from "mongoose";
 import adminRouter from "../src/routes/admin.js";
-import { AdminAccount } from "../src/models/AdminAccount.js";
-import { AdminSession } from "../src/models/AdminSession.js";
-import { User } from "../src/models/User.js";
-import { FoodHistory } from "../src/models/FoodHistory.js";
+import { newId } from "../src/db/ids.js";
+import { adminAccountRepo, adminSessionRepo } from "../src/repos/admin.js";
+import { userRepo } from "../src/repos/users.js";
+import { foodHistoryRepo } from "../src/repos/food-history.js";
 import { escapeRegex, serializeAdminUser } from "../src/lib/admin-portal.js";
 import { bcryptPasswordFits } from "../src/lib/admin-portal.js";
 
@@ -25,32 +24,26 @@ test("admin HTTP boundary authenticates sessions and scopes safe paginated data"
     originals.get(target)!.set(key, target[key]);
     target[key] = value;
   };
-  const userId = new Types.ObjectId();
-  const adminId = new Types.ObjectId();
+  const userId = newId();
+  const adminId = newId();
   const passwordHash = await bcrypt.hash("correct horse battery staple", 4);
   const account = { _id: adminId, email: "admin@example.com", passwordHash };
   let session: any = null;
   let lastFilter: any;
   let lastRecordFind: any;
-  let recordSelect = "";
   let recordPagination = { skip: -1, limit: -1 };
   const profile = { _id: userId, email: "person@example.com", plan: "plus", onboarded: true, preferences: { diet: "none" }, body: { weightKg: 60 }, training: {}, usage: {}, scheduleRevision: 4, createdAt: new Date(), updatedAt: new Date(), passwordHash: "secret", pushTokens: ["secret"], accidental: "secret" };
-  const makeQuery = (data: any) => {
-    const q: any = { select: () => q, sort: () => q, skip: (n: number) => { recordPagination.skip = n; return q; }, limit: (n: number) => { recordPagination.limit = n; return q; }, lean: () => Promise.resolve(data) };
-    return q;
-  };
-
-  replace(AdminAccount, "findOne", async (filter: any) => filter.email === account.email ? account : null);
-  replace(AdminAccount, "findById", () => ({ select: async () => ({ email: account.email }) }));
-  replace(AdminSession, "create", async (doc: any) => { session = { ...doc, _id: new Types.ObjectId() }; return session; });
-  replace(AdminSession, "findOne", async (filter: any) => session && session.tokenHash === filter.tokenHash && session.expiresAt > filter.expiresAt.$gt ? session : null);
-  replace(AdminSession, "deleteOne", async (filter: any) => { if (String(session?._id) === String(filter._id)) session = null; return { deletedCount: 1 }; });
-  replace(User, "find", (filter: any) => { lastFilter = filter; return makeQuery([profile]); });
-  replace(User, "countDocuments", async (filter: any) => { lastFilter = filter; return 1; });
-  replace(User, "findById", () => makeQuery(profile));
-  replace(User, "exists", async () => ({ _id: userId }));
-  replace(FoodHistory, "find", (filter: any) => { lastRecordFind = filter; const q = makeQuery([{ _id: "row", consumed: [{ name: "debug" }] }]); const select = q.select; q.select = (value: string) => { recordSelect = value; return select(value); }; q.skip = (n: number) => { recordPagination.skip = n; return q; }; q.limit = (n: number) => { recordPagination.limit = n; return q; }; return q; });
-  replace(FoodHistory, "countDocuments", async (filter: any) => { lastRecordFind = filter; return 1; });
+  replace(adminAccountRepo, "findByEmail", async (email: string) => email === account.email ? account : null);
+  replace(adminAccountRepo, "findEmailById", async () => ({ email: account.email }));
+  replace(adminSessionRepo, "create", async (doc: any) => { session = { ...doc, _id: newId() }; return session; });
+  replace(adminSessionRepo, "findValid", async (tokenHash: string, now: Date) => session && session.tokenHash === tokenHash && session.expiresAt > now ? session : null);
+  replace(adminSessionRepo, "delete", async (id: string) => { if (String(session?._id) === String(id)) session = null; });
+  replace(userRepo, "list", async (filter: any, offset: number, limit: number) => { lastFilter = filter; recordPagination = { skip: offset, limit }; return [profile]; });
+  replace(userRepo, "count", async (filter: any) => { lastFilter = filter; return 1; });
+  replace(userRepo, "findById", async () => profile);
+  replace(userRepo, "exists", async () => true);
+  replace(foodHistoryRepo, "listForAdmin", async (id: string, offset: number, limit: number) => { lastRecordFind = { userId: id }; recordPagination = { skip: offset, limit }; return [{ _id: "row", __v: 0, consumed: [{ name: "debug" }] }]; });
+  replace(foodHistoryRepo, "count", async (filter: any) => { lastRecordFind = filter; return 1; });
 
   const app = express();
   const call = async (path: string, init: RequestInit = {}) => {
@@ -92,11 +85,12 @@ test("admin HTTP boundary authenticates sessions and scopes safe paginated data"
     const users = await call("/users?search=person.%2B%40example.com&plan=plus&onboarded=true&page=2&limit=10", cookieInit(cookie));
     assert.equal(users.status, 200);
     const payload: any = JSON.parse(users.body); assert.deepEqual(payload.items[0], JSON.parse(JSON.stringify(serializeAdminUser(profile)))); assert.equal(payload.total, 1); assert.equal(payload.page, 2); assert.equal(payload.limit, 10);
-    assert.deepEqual(lastFilter, { plan: "plus", onboarded: true, email: { $regex: "person\\.\\+@example\\.com", $options: "i" } });
+    assert.deepEqual(lastFilter, { plan: "plus", onboarded: true, emailContains: "person.+@example.com" });
     assert.equal(recordPagination.skip, 10); assert.equal(recordPagination.limit, 10);
 
     const records = await call(`/users/${userId}/records/food-history?page=3&limit=5`, cookieInit(cookie));
-    assert.equal(records.status, 200); assert.deepEqual(lastRecordFind, { userId }); assert.equal(recordSelect, "+consumed -__v");
+    assert.equal(records.status, 200); assert.deepEqual(lastRecordFind, { userId });
+    const recordPayload: any = JSON.parse(records.body); assert.equal(recordPayload.items[0].consumed[0].name, "debug"); assert.equal("__v" in recordPayload.items[0], false);
     assert.equal(recordPagination.skip, 10); assert.equal(recordPagination.limit, 5);
 
     const logout = await call("/auth/logout", cookieInit(cookie, "POST")); assert.equal(logout.status, 204);

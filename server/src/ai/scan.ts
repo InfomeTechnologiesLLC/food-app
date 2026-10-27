@@ -7,7 +7,7 @@ export type ScanType = "groceries" | "receipt";
 export const scannedItemSchema = z.object({
   name: z.string().describe("Common ingredient name, singular, lowercase, no brand. e.g. 'tomato', 'greek yogurt'"),
   quantity: z.number().describe("Best estimate of how much there is; 1 if unsure"),
-  unit: z.string().describe("pcs, g, kg, ml, L, pack, bunch, can, bottle, dozen"),
+  unit: z.string().describe("Prefer pcs, g, kg, ml or L so recipes can use it. Use can/pack/bunch only when neither a count nor a weight/volume is known"),
   category: z.enum(PANTRY_CATEGORIES),
   estimatedExpiryDays: z
     .number()
@@ -32,6 +32,8 @@ on fridge shelves, in a delivery box, a single item held in hand, or a messy pil
   product is, then give the generic ingredient name (e.g. "Amul Taaza" -> "milk", "Maggi" -> "instant noodles").
 - Count identical items (e.g. 3 cans of chickpeas -> quantity 3, unit "can") and merge duplicates.
 - Use the pack size printed on the label when legible (e.g. 500 g, 1 L). Otherwise estimate a sensible quantity and unit.
+- Units must be usable in recipes: countable foods in pcs (a pack of 12 eggs -> 12 pcs, 6 bananas -> 6 pcs), everything else by
+  weight (g/kg) or volume (ml/L) (a 1 L bottle of milk -> 1 L, a 400 g tub of yogurt -> 400 g). Avoid "pack", "bottle" or "box".
 - If a best-before or expiry date is printed and legible, use it to set estimatedExpiryDays from today. Otherwise estimate the typical
   shelf life of that item as bought fresh today.
 - Only include items you can actually see. Do not guess what's inside opaque bags or behind other items.
@@ -41,6 +43,9 @@ on fridge shelves, in a delivery box, a single item held in hand, or a messy pil
 - Expand abbreviations into plain ingredient names (e.g. "ORG BNLS CHKN BRST" -> "chicken breast").
 - Skip non-food lines: bags, taxes, discounts, totals, household or personal care products.
 - Use the quantity and weight printed on the receipt when it is shown.
+- Units must be usable in recipes: countable foods in pcs (a pack of 12 eggs -> 12 pcs, bananas -> pcs), everything else by weight
+  (g/kg) or volume (ml/L). If only "1 pack" is shown, estimate the typical contents (e.g. eggs 12 pcs, chicken breast 500 g,
+  yogurt 400 g, milk 1 L). Avoid "pack", "bottle" or "box".
 - Estimate expiry from the purchase date being today.`,
 };
 

@@ -1,30 +1,30 @@
-import mongoose, { type ClientSession } from 'mongoose';
-import { User } from '../models/User.js';
+import type { Conn } from '../db/client.js';
+import { getDb } from '../db/client.js';
+import { foodHistory, mealPlans, pantryIngredients, scans, stockOperations, workoutPlans, workoutSessions } from '../db/schema.js';
+import { userRepo } from '../repos/users.js';
 
-export const isMockDataCollection = (name: string) => !name.startsWith('system.') && name !== User.collection.name && name !== 'adminaccounts' && name !== 'adminsessions';
+/** Tables whose rows are kept by a mock reset (login identities and schema bookkeeping). */
+const PRESERVED_TABLES = new Set(['users', 'admin_accounts', 'admin_sessions', '__drizzle_migrations']);
+export const isMockDataTable = (name: string) => !PRESERVED_TABLES.has(name);
+
+/** User-owned top-level tables. Their child tables (batches, days, meals, sets, ...) are cleared by ON DELETE CASCADE. */
+const USER_DATA_TABLES = [mealPlans, foodHistory, pantryIngredients, stockOperations, scans, workoutPlans, workoutSessions];
 
 /** Development fixtures have one account. Retain only its login identity. */
 export async function mockResetTarget(email?: string) {
   if (process.env.NODE_ENV !== 'development') throw new Error('Mock reset requires NODE_ENV=development.');
-  const accounts = await User.find({}).lean();
+  const accounts = await userRepo.all();
   if (accounts.length !== 1) throw new Error('Mock reset requires exactly one account.');
-  const account = accounts[0];
+  const account = accounts[0]!;
   if (email && account.email !== email.toLowerCase()) throw new Error('Account does not match --user.');
-  const collections = (await mongoose.connection.db!.listCollections().toArray()).map(c => c.name).filter(isMockDataCollection);
-  return { account, collections };
+  const [rows] = await getDb().execute('SHOW TABLES') as unknown as [Record<string, string>[]];
+  const tables = rows.map(row => Object.values(row)[0]!).filter(isMockDataTable);
+  return { account, tables };
 }
-export async function resetMockAccount(target: Awaited<ReturnType<typeof mockResetTarget>>, session: ClientSession) {
-  for (const name of target.collections) await mongoose.connection.collection(name).deleteMany({}, { session });
-  const { _id, email, passwordHash } = target.account;
-  const fresh = new User({ _id, email, passwordHash });
-  await fresh.validate();
-  await User.collection.replaceOne({ _id }, fresh.toObject(), { session });
-  const account = await User.findById(_id).session(session);
+export async function resetMockAccount(target: Awaited<ReturnType<typeof mockResetTarget>>, tx: Conn) {
+  for (const table of USER_DATA_TABLES) await tx.delete(table);
+  await userRepo.resetToDefaults(target.account._id, tx);
+  const account = await userRepo.findById(target.account._id, tx);
   if (!account) throw new Error('Reset account is missing.');
   return account;
-}
-export async function dropRetiredCollections() {
-  for (const name of ['pantryitems', 'exercisedefinitions']) {
-    if (await mongoose.connection.db!.listCollections({ name }).hasNext()) await mongoose.connection.collection(name).drop();
-  }
 }

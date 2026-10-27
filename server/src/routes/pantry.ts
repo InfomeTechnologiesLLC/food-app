@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import mongoose, { isValidObjectId } from "mongoose";
-import { PantryIngredient } from "../models/PantryIngredient.js";
+import { isId } from "../db/ids.js";
+import { transaction } from "../db/tx.js";
+import { pantryRepo } from "../repos/pantry.js";
+import { userRepo } from "../repos/users.js";
 import { PANTRY_CATEGORIES } from "../domain/pantry.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { addStock, canonicalStock } from "../lib/add-stock.js";
@@ -17,7 +19,7 @@ const itemSchema = z.object({
   expiryDate: z.coerce.date().nullable(),
   source: z.enum(["groceries", "receipt", "manual"]).default("manual"),
 });
-const validIds = (ingredientId: unknown, batchId: unknown) => isValidObjectId(ingredientId) && isValidObjectId(batchId);
+const validIds = (ingredientId: unknown, batchId: unknown) => isId(ingredientId) && isId(batchId);
 router.get("/", async (req: AuthRequest, res) => res.json((await readPantry(req.userId!)).map(presentIngredient)));
 
 router.post("/", async (req: AuthRequest, res) => {
@@ -30,27 +32,24 @@ router.post("/", async (req: AuthRequest, res) => {
 });
 
 router.patch("/:ingredientId/batches/:batchId", async (req: AuthRequest, res) => {
-  if (!validIds(req.params.ingredientId, req.params.batchId)) return res.status(404).json({ error: "Batch not found" });
+  const { ingredientId, batchId } = req.params as { ingredientId: string; batchId: string };
+  if (!validIds(ingredientId, batchId)) return res.status(404).json({ error: "Batch not found" });
   const parsed = itemSchema.omit({ source: true }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const found = await mongoose.connection.transaction(async (session) => {
-    const ingredient = await PantryIngredient.findOne({ _id: req.params.ingredientId, userId: req.userId }).session(session);
-    const batch = ingredient?.batches.find((item) => String(item._id) === req.params.batchId);
+  const found = await transaction(async (tx) => {
+    await userRepo.lock(req.userId!, tx);
+    const ingredient = await pantryRepo.findById(ingredientId, req.userId!, tx);
+    const batch = ingredient?.batches.find((item) => item._id === batchId);
     if (!ingredient || !batch) return false;
     const next = canonicalStock({ ...parsed.data, source: batch.source });
-    const replacement = { _id: batch._id, quantity: next.quantity, unit: next.unit, expiryDate: next.expiryDate, source: next.source };
+    const values = { quantity: next.quantity, unit: next.unit, expiryDate: next.expiryDate };
     if (ingredient.key === next.name) {
-      ingredient.category = next.category;
-      ingredient.batches = ingredient.batches.map((item) => String(item._id) === req.params.batchId ? replacement : item);
-      await ingredient.save({ session });
+      await pantryRepo.setCategory(tx, ingredient._id, next.category);
+      await pantryRepo.updateBatch(tx, ingredient._id, batchId, values);
     } else {
-      await PantryIngredient.findOneAndUpdate({ userId: req.userId, key: next.name }, {
-        $setOnInsert: { userId: req.userId, key: next.name, name: next.name, category: next.category },
-        $push: { batches: replacement },
-      }, { upsert: true, session, runValidators: true });
-      ingredient.batches = ingredient.batches.filter((item) => String(item._id) !== req.params.batchId);
-      if (ingredient.batches.length) await ingredient.save({ session });
-      else await ingredient.deleteOne({ session });
+      // Renamed: move the batch to the ingredient with the new name (created if needed).
+      const target = await pantryRepo.ensureIngredient(tx, { userId: req.userId!, key: next.name, name: next.name, category: next.category });
+      await pantryRepo.moveBatch(tx, batchId, ingredient._id, target, values);
     }
     return true;
   });
@@ -59,13 +58,13 @@ router.patch("/:ingredientId/batches/:batchId", async (req: AuthRequest, res) =>
 });
 
 router.delete("/:ingredientId/batches/:batchId", async (req: AuthRequest, res) => {
-  if (!validIds(req.params.ingredientId, req.params.batchId)) return res.status(404).json({ error: "Batch not found" });
-  const found = await mongoose.connection.transaction(async (session) => {
-    const ingredient = await PantryIngredient.findOne({ _id: req.params.ingredientId, userId: req.userId }).session(session);
-    if (!ingredient?.batches.some((batch) => String(batch._id) === req.params.batchId)) return false;
-    ingredient.batches = ingredient.batches.filter((batch) => String(batch._id) !== req.params.batchId);
-    if (ingredient.batches.length) await ingredient.save({ session });
-    else await ingredient.deleteOne({ session });
+  const { ingredientId, batchId } = req.params as { ingredientId: string; batchId: string };
+  if (!validIds(ingredientId, batchId)) return res.status(404).json({ error: "Batch not found" });
+  const found = await transaction(async (tx) => {
+    await userRepo.lock(req.userId!, tx);
+    const ingredient = await pantryRepo.findById(ingredientId, req.userId!, tx);
+    if (!ingredient?.batches.some((batch) => batch._id === batchId)) return false;
+    await pantryRepo.removeBatch(tx, ingredient._id, batchId);
     return true;
   });
   if (!found) return res.status(404).json({ error: "Batch not found" });

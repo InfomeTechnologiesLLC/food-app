@@ -4,7 +4,7 @@ import { sameIngredient, isAvailable, extraIngredients, findAllergens } from "..
 import { annotateReadiness } from "../src/lib/readiness.js";
 import { buildShoppingList } from "../src/lib/shopping.js";
 import { planConsumption } from "../src/lib/consume.js";
-import { Types } from "mongoose";
+import { newId } from "../src/db/ids.js";
 
 test("plant milk exceptions preserve tree nut and soy warnings", () => {
   const allergies = ["milk", "tree nuts", "soy"];
@@ -49,8 +49,8 @@ test("rice cannot make rice flour available or remove it from shopping", () => {
 });
 
 test("cooking rice flour neither deducts nor deletes pantry rice", () => {
-  const rice = { _id: new Types.ObjectId(), userId: new Types.ObjectId(), key: "rice", name: "rice", category: "grains" as const,
-    batches: [{ _id: new Types.ObjectId(), quantity: 100, unit: "g", expiryDate: null, source: "manual" as const }] };
+  const rice = { _id: newId(), userId: newId(), key: "rice", name: "rice", category: "grains" as const,
+    batches: [{ _id: newId(), quantity: 100, unit: "g", expiryDate: null, source: "manual" as const }] };
   const plan = planConsumption([rice], [{ name: "rice flour", quantity: 100, unit: "g" }]);
   assert.deepEqual(plan.shortages, [{ name: "rice flour", quantity: 100, unit: "g", have: 0, shortage: 100, unitMismatch: false, incompatibleStock: [] }]);
   assert.deepEqual(plan.deductions, []);

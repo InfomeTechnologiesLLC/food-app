@@ -1,15 +1,16 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { mockResetTarget, resetMockAccount, dropRetiredCollections } from "./mock-reset.js";
-import { WorkoutPlan, WorkoutSession } from "../models/Workout.js";
+import { mockResetTarget, resetMockAccount } from "./mock-reset.js";
+import { connectDb, closeDb } from "../db/client.js";
+import { transaction } from "../db/tx.js";
+import { newId } from "../db/ids.js";
+import { userRepo } from "../repos/users.js";
+import { buildPlan, mealPlanRepo } from "../repos/meal-plans.js";
+import { foodHistoryRepo } from "../repos/food-history.js";
+import { pantryRepo, stockOperationRepo } from "../repos/pantry.js";
+import { workoutPlanRepo, workoutSessionRepo } from "../repos/workouts.js";
 import { DEFAULT_TRAINING, exerciseById, validateWorkout, workoutOutputSchema, sessionPayloadSchema } from "../domain/exercise.js";
 import { consumeIngredients } from "../lib/consume.js";
-import mongoose from "mongoose";
-import { User } from "../models/User.js";
-import { MealPlan } from "../models/MealPlan.js";
-import { FoodHistory } from "../models/FoodHistory.js";
-import { PantryIngredient } from "../models/PantryIngredient.js";
-import { StockOperation } from "../models/StockOperation.js";
 import { addStockInSession } from "../lib/add-stock.js";
 import { addDays, calendarToday, timezoneSchema } from "../lib/calendar.js";
 import { readPantry, pantryStock } from "../lib/pantry.js";
@@ -81,14 +82,12 @@ const pantry = [
   stock("turmeric", 50, "g", "spices"), stock("salt", 500, "g", "spices"), stock("black pepper", 50, "g", "spices"), stock("sambar powder", 100, "g", "spices"),
 ];
 
-if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is required");
-await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
+await connectDb();
 try {
-  await Promise.all(mongoose.modelNames().map(name => mongoose.model(name).init()));
   const target = reset ? await mockResetTarget(email) : null;
-  const existing = target ? null : await User.findOne({ email: email!.toLowerCase() });
+  const existing = target ? null : await userRepo.findByEmail(email!);
   if (!target && !existing) throw new Error("Account not found.");
-  const accountId = String(target?.account._id ?? existing!._id);
+  const accountId = target?.account._id ?? existing!._id;
   const training = { ...DEFAULT_TRAINING, enabled: true, equipment: ['dumbbells'] as ['dumbbells'] };
   const body = { heightCm: 170, weightKg: 68, weightUpdatedAt: new Date() };
   const workout = workoutOutputSchema.parse({ title: 'A manageable week · Kerala mock profile', days: Array.from({ length: 7 }, (_, index) => {
@@ -100,54 +99,56 @@ try {
   const context = { startDate, timezone, training, body, recentSessions: [] };
   const errors = validateWorkout(workout, context);
   if (errors.length) throw new Error(errors.join('; '));
-  const result = await mongoose.connection.transaction(async session => {
-    const user = target ? await resetMockAccount(target, session) : existing!;
-    if (await StockOperation.exists({ userId: user._id, key }).session(session)) return 'already seeded';
-    for (const collection of [MealPlan, FoodHistory, PantryIngredient, StockOperation, WorkoutPlan, WorkoutSession]) {
-      if (await collection.collection.countDocuments({ userId: user._id }, { session })) throw new Error('This account already has data. Use --reset --confirm to replace mock data.');
-    }
-    user.set({ preferences: { diet: 'vegetarian', allergies: [], goal: 'balanced', budget: 'medium' }, body, training, onboarded: true });
-    await user.save({ session });
-    await addStockInSession(user.id, key, pantry, session);
-    const [trainingPlan] = await WorkoutPlan.create([{ userId: user._id, ...workout, context, status: 'active' }], { session });
+  const result = await transaction(async tx => {
+    const user = target ? await resetMockAccount(target, tx) : existing!;
+    const userId = user._id;
+    await userRepo.lock(userId, tx);
+    if (await stockOperationRepo.exists(userId, key, tx)) return 'already seeded';
+    const counts = await Promise.all([mealPlanRepo.count({ userId }, tx), foodHistoryRepo.count({ userId }, tx), pantryRepo.count(userId, tx),
+      stockOperationRepo.count(userId, tx), workoutPlanRepo.count({ userId }, tx), workoutSessionRepo.count(userId, tx)]);
+    if (counts.some(Boolean)) throw new Error('This account already has data. Use --reset --confirm to replace mock data.');
+    const preferences = { diet: 'vegetarian', allergies: [], goal: 'balanced', budget: 'medium' };
+    await userRepo.setProfile(userId, { preferences, body, training, onboarded: true }, tx);
+    await addStockInSession(userId, key, pantry, tx);
+    const trainingPlan = await workoutPlanRepo.create({ userId, ...workout, context, status: 'active' }, tx);
     const trainingContext = { goal: training.goal, days: workout.days.map(d => ({ date: d.date, title: d.title, exercises: d.exercises.map(e => ({ exerciseId: e.exerciseId, sets: e.sets, durationSeconds: e.durationSeconds })) })) };
-    const settingsSnapshot = { ...user.toObject().preferences!, body, trainingContext, mealTypes: ['breakfast', 'lunch', 'dinner'], maxExtraItems: 5 };
+    const settingsSnapshot = { ...preferences, body, trainingContext, mealTypes: ['breakfast', 'lunch', 'dinner'], maxExtraItems: 5 };
     const menus = [[puttu, thoran, dosa], [appam, avial, idiyappam], [idli, upma, kanji]];
-    const [plan] = await MealPlan.create([{
-      userId: user._id, title: 'Kerala home kitchen · 7-day mock plan', status: 'active', startDate, settingsSnapshot,
-      days: Array.from({ length: 7 }, (_, index) => ({ day: index + 1, date: addDays(startDate, index), meals: menus[index % menus.length] })),
-    }], { session, ordered: true });
+    const plan = buildPlan({
+      userId, title: 'Kerala home kitchen · 7-day mock plan', startDate, settingsSnapshot,
+      days: Array.from({ length: 7 }, (_, index) => ({ day: index + 1, date: addDays(startDate, index), meals: menus[index % menus.length]! })),
+    });
     // History and stock deductions commit together, so undo works on these fixtures.
-    for (const eatenMeal of plan.days[0].meals) {
-      const consumed = await consumeIngredients(user.id, eatenMeal.ingredients.map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit })), session);
+    for (const eatenMeal of plan.days[0]!.meals) {
+      const consumed = await consumeIngredients(userId, eatenMeal.ingredients.map(item => ({ name: item.name, quantity: item.quantity, unit: item.unit })), tx);
       eatenMeal.eaten = true;
-      eatenMeal.historyEntryId = new mongoose.Types.ObjectId();
-      await FoodHistory.create([{ _id: eatenMeal.historyEntryId, userId: user._id, mealId: eatenMeal._id, sourcePlanId: plan._id, sourcePlanTitle: plan.title,
-        date: startDate, recordedAt: new Date(`${startDate}T14:00:00+05:30`), meal: eatenMeal.toObject(), consumed }], { session });
+      eatenMeal.historyEntryId = newId();
+      await foodHistoryRepo.create(tx, { _id: eatenMeal.historyEntryId, userId, mealId: eatenMeal._id, sourcePlanId: plan._id, sourcePlanTitle: plan.title,
+        date: startDate, recordedAt: new Date(`${startDate}T14:00:00+05:30`), meal: eatenMeal, consumed });
     }
-    await plan.save({ session });
+    await mealPlanRepo.insert(tx, plan);
     for (const offset of [-3, -1]) {
       const date = addDays(today, offset);
-      const payload = sessionPayloadSchema.parse({ planId: trainingPlan.id, scheduledDate: date, date, timezone, title: 'Full body strength', startedAt: `${date}T12:00:00.000Z`, finishedAt: `${date}T12:20:00.000Z`, status: 'finished', notes: 'Comfortable mock strength workout.', feedback: 'right',
+      const payload = sessionPayloadSchema.parse({ planId: trainingPlan._id, scheduledDate: date, date, timezone, title: 'Full body strength', startedAt: `${date}T12:00:00.000Z`, finishedAt: `${date}T12:20:00.000Z`, status: 'finished', notes: 'Comfortable mock strength workout.', feedback: 'right',
         exercises: ['goblet-squat', 'dumbbell-floor-press', 'dumbbell-row', 'dead-bug'].map(exerciseId => ({ exerciseId, restSeconds: 60, sets: Array.from({ length: 2 }, () => ({ reps: 8, weightKg: null, durationSeconds: null, distanceKm: null, status: 'completed' })) })) });
-      await WorkoutSession.create([{ _id: randomUUID(), userId: user._id, revision: 1, operationId: randomUUID(), ...payload,
-        exercises: payload.exercises.map(e => ({ ...e, definition: exerciseById(e.exerciseId) })) }], { session });
+      await workoutSessionRepo.create({ _id: randomUUID(), userId, revision: 1, operationId: randomUUID(), ...payload,
+        exercises: payload.exercises.map(e => ({ ...e, definition: exerciseById(e.exerciseId) })) }, tx);
     }
     return 'seeded';
   });
-  if (reset) await dropRetiredCollections();
-  const user = await User.findById(accountId);
+  const user = await userRepo.findById(accountId);
   if (!user) throw new Error('Seeded account is missing');
-  const active = await MealPlan.findOne({ userId: user._id, status: "active" }).lean();
-  const stock = await pantryStock(user.id);
+  const active = await mealPlanRepo.findActive(user._id);
+  const stock = await pantryStock(user._id);
   const ready = active ? annotateReadiness(active, stock) : null;
+  const pantryRows = await readPantry(user._id);
   console.log(JSON.stringify({ result, email: user.email, timezone, startDate: active?.startDate,
-    pantryItems: (await readPantry(user.id)).length, pantryBatches: (await readPantry(user.id)).reduce((count, item) => count + item.batches.length, 0),
+    pantryItems: pantryRows.length, pantryBatches: pantryRows.reduce((count, item) => count + item.batches.length, 0),
     activeMeals: ready?.totalMeals, readyMeals: ready?.readyMeals, shopping: active ? buildShoppingList(active.days.flatMap((day) => day.meals), stock) : [],
-    historyEntries: await FoodHistory.countDocuments({ userId: user._id }),
-    workoutPlans: await WorkoutPlan.countDocuments({ userId: user._id }),
-    workoutHistory: await WorkoutSession.countDocuments({ userId: user._id }),
+    historyEntries: await foodHistoryRepo.count({ userId: user._id }),
+    workoutPlans: await workoutPlanRepo.count({ userId: user._id }),
+    workoutHistory: await workoutSessionRepo.count(user._id),
     credentialsPreserved: target ? user.email === target.account.email && user.passwordHash === target.account.passwordHash : true,
-    usage: (await User.findById(user._id).lean())?.usage,
+    usage: user.usage,
   }, null, 2));
-} finally { await mongoose.disconnect(); }
+} finally { await closeDb(); }

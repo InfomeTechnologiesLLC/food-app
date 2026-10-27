@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { gemini, GEMINI_MODEL, withRetry, AIError } from "./gemini.js";
-import { extraIngredients, findAllergens, STAPLES } from "../lib/ingredients.js";
+import { extraIngredients, findAllergens, isStaple, normalize, sameIngredient, STAPLES } from "../lib/ingredients.js";
+import { convert } from "../lib/units.js";
 
 export const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
 export type MealType = (typeof MEAL_TYPES)[number];
@@ -130,6 +131,22 @@ async function callGemini(input: PlanInput, extraNote?: string): Promise<Generat
 const mealText = (m: Meal) => [m.title, ...m.ingredients.map((i) => i.name)].join(" | ");
 
 /**
+ * Pantry ingredients that a recipe asks for in a unit that can't be compared with any pantry batch
+ * (e.g. "2 pcs egg" when the pantry has "1 pack egg"). Such meals would always show as missing
+ * that ingredient, so the AI is asked to use the pantry's unit instead.
+ */
+export function unitMismatches(meals: Meal[], pantry: PlanInput["pantry"]) {
+  const found = new Map<string, string>();
+  for (const ingredient of meals.flatMap((m) => m.ingredients)) {
+    if (isStaple(ingredient.name)) continue;
+    const stock = pantry.filter((p) => sameIngredient(p.name, ingredient.name));
+    if (!stock.length || stock.some((p) => convert(1, p.unit, ingredient.unit) !== null)) continue;
+    found.set(normalize(ingredient.name), `${ingredient.name} (recipe used "${ingredient.unit}", pantry has ${[...new Set(stock.map((p) => p.unit))].join(" / ")})`);
+  }
+  return [...found.values()];
+}
+
+/**
  * Generates a plan, then checks it in code: allergens and the user's shopping limit.
  * If either is broken it asks once more with specific feedback. Meals still containing
  * allergens after that keep a visible warning.
@@ -149,7 +166,8 @@ export async function generatePlan(input: PlanInput) {
 
   const hits = allergenHits();
   const extras = tooManyExtras();
-  if (hits.length || extras) {
+  const mismatches = unitMismatches(plan.days.flatMap((d) => d.meals), input.pantry);
+  if (hits.length || extras || mismatches.length) {
     const notes: string[] = [];
     if (hits.length) {
       notes.push(`A previous attempt included allergens in: ${hits.map((v) => `"${v.meal.title}" (${v.hits.join(", ")})`).join("; ")}. Do not use these ingredients at all.`);
@@ -160,6 +178,9 @@ export async function generatePlan(input: PlanInput) {
           ? `A previous attempt used ingredients that are NOT in the pantry: ${extras.join(", ")}. Use only pantry items and staples.`
           : `A previous attempt needed ${extras.length} extra ingredients (${extras.join(", ")}), but the user will buy at most ${input.maxExtraItems}. Cut it down.`
       );
+    }
+        if (mismatches.length) {
+      notes.push(`A previous attempt used units that cannot be matched to the pantry: ${mismatches.join("; ")}. For pantry ingredients use exactly the pantry's unit, or one convertible to it.`);
     }
     plan = await callGemini(input, `IMPORTANT:\n${notes.join("\n")}`);
   }

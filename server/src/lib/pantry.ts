@@ -1,6 +1,6 @@
-import { PantryIngredient } from "../models/PantryIngredient.js";
+import { pantryRepo } from "../repos/pantry.js";
 import type { IngredientStock } from "../domain/pantry.js";
-import type { ClientSession } from "mongoose";
+import type { Conn } from "../db/client.js";
 
 export function presentIngredient(ingredient: IngredientStock) {
   const totals = new Map<string, number>();
@@ -11,9 +11,9 @@ export function presentIngredient(ingredient: IngredientStock) {
 export function flattenStock(ingredients: IngredientStock[]) {
   return ingredients.flatMap((ingredient) => ingredient.batches.map((batch) => ({ name: ingredient.name, quantity: batch.quantity, unit: batch.unit })));
 }
-export async function readPantry(userId: string, session?: ClientSession) {
-  return PantryIngredient.find({ userId }).session(session ?? null).sort({ name: 1 }).lean();
+export async function readPantry(userId: string, conn?: Conn) {
+  return pantryRepo.list(userId, conn);
 }
-export async function pantryStock(userId: string, session?: ClientSession) {
-  return flattenStock(await readPantry(userId, session));
+export async function pantryStock(userId: string, conn?: Conn) {
+  return flattenStock(await readPantry(userId, conn));
 }

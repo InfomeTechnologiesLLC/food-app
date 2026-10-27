@@ -1,7 +1,8 @@
 import { env } from "./env.js";
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
-import mongoose from "mongoose";
+import { connectDb, pingDb } from "./db/client.js";
+import { runMigrations } from "./db/migrate.js";
 import multer from "multer";
 import authRoutes from "./routes/auth.js";
 import meRoutes from "./routes/me.js";
@@ -26,7 +27,7 @@ app.use("/admin-api", (_req, res, next) => { res.setHeader("Cache-Control", "no-
 app.use(express.json({ limit: "1mb" }));
 app.use("/admin-api", adminRoutes);
 
-app.get("/health", (_req, res) => res.json({ ok: true, db: mongoose.connection.readyState === 1 }));
+app.get("/health", async (_req, res) => res.json({ ok: true, db: await pingDb() }));
 app.use("/auth", authRoutes);
 app.use("/me", meRoutes);
 app.use("/pantry", pantryRoutes);
@@ -53,6 +54,16 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 };
 app.use(errorHandler);
 
-await mongoose.connect(env.MONGODB_URI);
+try {
+  await connectDb(env.DATABASE_URL);
+  // Creates any missing tables (safe to run on every start). Set DB_AUTO_MIGRATE=false to manage this yourself.
+  if (process.env.DB_AUTO_MIGRATE !== "false") await runMigrations(env.DATABASE_URL);
+} catch (error) {
+  const url = new URL(env.DATABASE_URL);
+  console.error(`Could not connect to MySQL at ${url.hostname}:${url.port || 3306} (database "${url.pathname.slice(1)}").`);
+  console.error("Check that MySQL is running, the database exists, and the user/password in DATABASE_URL are correct.");
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
 
 app.listen(env.PORT, "0.0.0.0", () => console.log(`API on :${env.PORT}`));

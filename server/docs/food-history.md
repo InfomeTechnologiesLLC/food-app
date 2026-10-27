@@ -9,7 +9,7 @@ To explicitly clear development mock data, from `server/` run:
 NODE_ENV=development npm run reset:mock -- --confirm
 ```
 
-This uses the configured `MONGODB_URI` and deletes plans, food history, pantry,
+This uses the configured `DATABASE_URL` (MySQL) and deletes plans, food history, pantry,
 purchase receipts, and scans. Accounts, preferences, and usage remain intact.
 Never point this command at a production database. It refuses other NODE_ENV
 values and never runs automatically.
@@ -20,8 +20,8 @@ Late logging affects the planned calendar date but deducts today's stock.
 Undo does not restore a removed plan. Removing a plan discards uneaten meals.
 
 Run `npm test`, `npm run build`, and `npm run test:integration` in `server/`.
-Integration tests create and drop an isolated test database using MONGODB_URI;
-the database must support MongoDB transactions. Run typecheck and lint in mobile.
+Integration tests create and drop an isolated MySQL test database next to the one in
+DATABASE_URL, so that MySQL user needs CREATE/DROP DATABASE rights. Run typecheck and lint in mobile.
 
 ## Kerala fixtures
 

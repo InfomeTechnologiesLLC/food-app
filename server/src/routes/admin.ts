@@ -1,19 +1,17 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
-import mongoose, { Types } from "mongoose";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { AdminAccount } from "../models/AdminAccount.js";
-import { AdminSession } from "../models/AdminSession.js";
-import { User } from "../models/User.js";
-import { PantryIngredient } from "../models/PantryIngredient.js";
-import { MealPlan } from "../models/MealPlan.js";
-import { FoodHistory } from "../models/FoodHistory.js";
-import { Scan } from "../models/Scan.js";
-import { WorkoutPlan, WorkoutSession } from "../models/Workout.js";
-import { StockOperation } from "../models/StockOperation.js";
-import { bcryptPasswordFits, escapeRegex, serializeAdminUser } from "../lib/admin-portal.js";
+import { isId } from "../db/ids.js";
+import { adminAccountRepo, adminSessionRepo } from "../repos/admin.js";
+import { userRepo, type UserFilter } from "../repos/users.js";
+import { pantryRepo, stockOperationRepo } from "../repos/pantry.js";
+import { mealPlanRepo } from "../repos/meal-plans.js";
+import { foodHistoryRepo } from "../repos/food-history.js";
+import { scanRepo } from "../repos/scans.js";
+import { workoutPlanRepo, workoutSessionRepo } from "../repos/workouts.js";
+import { bcryptPasswordFits, serializeAdminUser } from "../lib/admin-portal.js";
 
 const router = Router();
 const COOKIE = "mealmind_admin";
@@ -29,11 +27,11 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
   const parsed = credentials.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid credentials" });
   const email = parsed.data.email.toLowerCase();
-  const admin = await AdminAccount.findOne({ email });
+  const admin = await adminAccountRepo.findByEmail(email);
   if (!admin || !(await bcrypt.compare(parsed.data.password, admin.passwordHash))) return res.status(401).json({ error: "Invalid credentials" });
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_MS);
-  await AdminSession.create({ adminId: admin._id, tokenHash: hash(token), expiresAt });
+  await adminSessionRepo.create({ adminId: admin._id, tokenHash: hash(token), expiresAt });
   res.cookie(COOKIE, token, cookieOptions(process.env.NODE_ENV === "production"));
   res.json({ admin: { email: admin.email } });
 });
@@ -44,9 +42,9 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
   if (!token || token.length > 128) return res.status(401).json({ error: "Unauthorized" });
   let decoded: string;
   try { decoded = decodeURIComponent(token); } catch { return res.status(401).json({ error: "Unauthorized" }); }
-  const session = await AdminSession.findOne({ tokenHash: hash(decoded), expiresAt: { $gt: new Date() } });
+  const session = await adminSessionRepo.findValid(hash(decoded), new Date());
   if (!session) return res.status(401).json({ error: "Unauthorized" });
-  const admin = await AdminAccount.findById(session.adminId).select("email");
+  const admin = await adminAccountRepo.findEmailById(session.adminId);
   if (!admin) return res.status(401).json({ error: "Unauthorized" });
   res.locals.admin = admin;
   res.locals.adminSession = session;
@@ -55,15 +53,15 @@ async function authenticate(req: Request, res: Response, next: NextFunction) {
 
 router.get("/auth/me", authenticate, (_req, res) => res.json({ admin: { email: res.locals.admin.email } }));
 router.post("/auth/logout", authenticate, async (_req, res) => {
-  await AdminSession.deleteOne({ _id: res.locals.adminSession._id });
+  await adminSessionRepo.delete(res.locals.adminSession._id);
   res.clearCookie(COOKIE, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/admin-api" });
   res.status(204).end();
 });
 
 router.get("/overview", authenticate, async (_req, res) => {
   const [users, free, plus, onboarded, scans, workoutSessions] = await Promise.all([
-    User.countDocuments(), User.countDocuments({ plan: "free" }), User.countDocuments({ plan: "plus" }),
-    User.countDocuments({ onboarded: true }), Scan.countDocuments(), WorkoutSession.countDocuments(),
+    userRepo.count(), userRepo.count({ plan: "free" }), userRepo.count({ plan: "plus" }),
+    userRepo.count({ onboarded: true }), scanRepo.count(), workoutSessionRepo.count(),
   ]);
   res.json({ users, free, plus, onboarded, scans, workoutSessions });
 });
@@ -82,44 +80,46 @@ router.get("/users", authenticate, async (req, res) => {
   if (search !== undefined && typeof search !== "string") return res.status(400).json({ error: "Invalid search" });
   if (plan !== undefined && plan !== "free" && plan !== "plus") return res.status(400).json({ error: "Invalid plan" });
   if (onboarded !== undefined && onboarded !== "true" && onboarded !== "false") return res.status(400).json({ error: "Invalid onboarded filter" });
-  const filter: Record<string, unknown> = {};
+  const filter: UserFilter = {};
   if (plan) filter.plan = plan;
   if (onboarded !== undefined) filter.onboarded = onboarded === "true";
   if (search) {
-    if (Types.ObjectId.isValid(search) && String(new Types.ObjectId(search)) === search.toLowerCase()) filter._id = search;
-    else filter.email = { $regex: escapeRegex(search), $options: "i" };
+    if (isId(search)) filter.id = search.toLowerCase();
+    else filter.emailContains = search;
   }
-  const [items, total] = await Promise.all([User.find(filter).sort({ createdAt: -1, _id: -1 }).skip((pg.page - 1) * pg.limit).limit(pg.limit).lean(), User.countDocuments(filter)]);
-  res.json(pageResult(items.map((item) => serializeAdminUser(item as Record<string, unknown>)), total, pg.page, pg.limit));
+  const [items, total] = await Promise.all([userRepo.list(filter, (pg.page - 1) * pg.limit, pg.limit), userRepo.count(filter)]);
+  res.json(pageResult(items.map((item) => serializeAdminUser(item as unknown as Record<string, unknown>)), total, pg.page, pg.limit));
 });
 
 router.get("/users/:id", authenticate, async (req, res) => {
   const id = String(req.params.id);
-  if (!Types.ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid user id" });
-  const user = await User.findById(id).lean();
+  if (!isId(id)) return res.status(400).json({ error: "Invalid user id" });
+  const user = await userRepo.findById(id);
   if (!user) return res.status(404).json({ error: "User not found" });
-  res.json(serializeAdminUser(user as Record<string, unknown>));
+  res.json(serializeAdminUser(user as unknown as Record<string, unknown>));
 });
 
-const recordModels = {
-  pantry: PantryIngredient, "meal-plans": MealPlan, "food-history": FoodHistory, scans: Scan,
-  "workout-plans": WorkoutPlan, "workout-sessions": WorkoutSession, "stock-operations": StockOperation,
-} as const;
-const categories = Object.keys(recordModels) as Array<keyof typeof recordModels>;
+type RecordSource = { list: (userId: string, offset: number, limit: number) => Promise<object[]>; count: (userId: string) => Promise<number> };
+const recordSources: Record<string, RecordSource> = {
+  pantry: { list: (u, o, l) => pantryRepo.listForAdmin(u, o, l), count: (u) => pantryRepo.count(u) },
+  "meal-plans": { list: (u, o, l) => mealPlanRepo.listForAdmin(u, o, l), count: (u) => mealPlanRepo.count({ userId: u }) },
+  // Food history includes the pantry deductions (consumed) for debugging.
+  "food-history": { list: (u, o, l) => foodHistoryRepo.listForAdmin(u, o, l), count: (u) => foodHistoryRepo.count({ userId: u }) },
+  scans: { list: (u, o, l) => scanRepo.listForAdmin(u, o, l), count: (u) => scanRepo.count(u) },
+  "workout-plans": { list: (u, o, l) => workoutPlanRepo.listForAdmin(u, o, l), count: (u) => workoutPlanRepo.count({ userId: u }) },
+  "workout-sessions": { list: (u, o, l) => workoutSessionRepo.listForAdmin(u, o, l), count: (u) => workoutSessionRepo.count(u) },
+  "stock-operations": { list: (u, o, l) => stockOperationRepo.listForAdmin(u, o, l), count: (u) => stockOperationRepo.count(u) },
+};
 router.get("/users/:id/records/:category", authenticate, async (req, res) => {
-  const category = req.params.category as keyof typeof recordModels;
+  const category = String(req.params.category);
   const id = String(req.params.id);
-  if (!Types.ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid user id" });
-  if (!categories.includes(category)) return res.status(400).json({ error: "Invalid category" });
+  if (!isId(id)) return res.status(400).json({ error: "Invalid user id" });
+  const source = Object.hasOwn(recordSources, category) ? recordSources[category] : undefined;
+  if (!source) return res.status(400).json({ error: "Invalid category" });
   const pg = pagination(req, res); if (!pg) return;
-  if (!(await User.exists({ _id: id }))) return res.status(404).json({ error: "User not found" });
-  const Model = recordModels[category] as typeof PantryIngredient;
-  const sort: Record<string, 1 | -1> = category === "food-history" ? { recordedAt: -1, _id: -1 } : { createdAt: -1, _id: -1 };
-  const [items, total] = await Promise.all([
-    Model.find({ userId: new mongoose.Types.ObjectId(id) }).select(category === "food-history" ? "+consumed -__v" : "-__v").sort(sort).skip((pg.page - 1) * pg.limit).limit(pg.limit).lean(),
-    Model.countDocuments({ userId: new mongoose.Types.ObjectId(id) }),
-  ]);
-  res.json(pageResult(items, total, pg.page, pg.limit));
+  if (!(await userRepo.exists(id))) return res.status(404).json({ error: "User not found" });
+  const [items, total] = await Promise.all([source.list(id, (pg.page - 1) * pg.limit, pg.limit), source.count(id)]);
+  res.json(pageResult(items.map(({ __v, ...item }: { __v?: number }) => item), total, pg.page, pg.limit));
 });
 
 export default router;

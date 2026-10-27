@@ -16,4 +16,6 @@ The audit found no explicit old-version branches or alternate legacy models outs
 
 The configured development database was migrated transactionally: 21 retired pantry rows became 19 ingredients containing 20 positive stock batches. One exhausted banana row was removed; stock amounts were conserved. The two plans were updated, including a draft banana unit of `medium` corrected to `pcs`. Historical consumed quantities were preserved. The retired `pantryitems` collection was dropped. A pre-migration EJSON backup is saved locally at `/tmp/mealmind-stock-backup-1791865056893.ejson`.
 
-Verification: unit tests plus MongoDB integration tests in a disposable database cover uniqueness, concurrent additions, request replay, transaction rollback, scan confirmation, batch editing/deletion, shopping purchases, cooking, and undo. The integration database is dropped after the tests.
+Verification: unit tests plus integration tests (now MySQL, see `DATABASE.md`) in a disposable database cover uniqueness, concurrent additions, request replay, transaction rollback, scan confirmation, batch editing/deletion, shopping purchases, cooking, and undo. The integration database is dropped after the tests.
+
+> Note (22 October 2026): the server moved from MongoDB/Mongoose to MySQL with Drizzle ORM. Collections are now tables; see `server/DATABASE.md`. The history above describes the MongoDB era.

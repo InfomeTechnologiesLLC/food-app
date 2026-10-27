@@ -1,11 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { isValidObjectId } from "mongoose";
+import { isId } from "../db/ids.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { scanImage } from "../ai/scan.js";
 import { AIError } from "../ai/gemini.js";
-import { Scan } from "../models/Scan.js";
+import { scanRepo } from "../repos/scans.js";
 import { PANTRY_CATEGORIES } from "../domain/pantry.js";
 import { consumeUsage, refundUsage } from "../lib/usage.js";
 import { stockScan } from "../lib/stock-scan.js";
@@ -39,8 +39,8 @@ router.post("/", upload.single("image"), async (req: AuthRequest, res) => {
 
   try {
     const items = await scanImage(req.file.buffer, imageMime(req.file)!, type.data);
-    const scan = await Scan.create({ userId: req.userId, type: type.data, aiItems: items });
-    res.status(201).json({ scanId: scan.id, type: type.data, items });
+    const scanId = await scanRepo.create({ userId: req.userId!, type: type.data, aiItems: items });
+    res.status(201).json({ scanId, type: type.data, items });
   } catch (err) {
     await refundUsage(req.userId!, "scansThisMonth");
     if (err instanceof AIError) return res.status(err.status).json({ error: err.message });
@@ -66,7 +66,7 @@ const confirmSchema = z.object({
 
 // The user has reviewed/edited the AI draft; only now does it reach the pantry.
 router.post("/:id/confirm", async (req: AuthRequest, res) => {
-  if (!isValidObjectId(req.params.id)) return res.status(404).json({ error: "Scan not found" });
+  if (!isId(req.params.id)) return res.status(404).json({ error: "Scan not found" });
   const parsed = confirmSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

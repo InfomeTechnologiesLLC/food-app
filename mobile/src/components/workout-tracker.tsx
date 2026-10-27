@@ -13,7 +13,7 @@ import type { LocalSession, SetLog, WorkoutDay, WorkoutSession } from '@/lib/exe
 export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?: WorkoutDay; planId?: string }) {
   const theme = useTheme();
   const { user, needsSignIn } = useAuth();
-  const { save, start, sync, resolve } = useExercise();
+  const { save, start, resolve } = useExercise();
   const library = useExerciseLibrary();
   const [open, setOpen] = useState<number | null>(null);
   const [details, setDetails] = useState(false);

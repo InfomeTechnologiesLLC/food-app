@@ -1,8 +1,8 @@
 import { env } from "../env.js";
-import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import { AdminAccount } from "../models/AdminAccount.js";
 import { z } from "zod";
+import { connectDb, closeDb } from "../db/client.js";
+import { adminAccountRepo } from "../repos/admin.js";
 import { bcryptPasswordFits } from "../lib/admin-portal.js";
 
 const emailValue = process.env.ADMIN_EMAIL?.trim();
@@ -13,12 +13,12 @@ const email = parsedEmail.data.toLowerCase();
 if (password.length < 8) throw new Error("ADMIN_PASSWORD must be at least 8 characters");
 if (!bcryptPasswordFits(password)) throw new Error("ADMIN_PASSWORD must be at most 72 UTF-8 bytes for bcrypt");
 
-await mongoose.connect(env.MONGODB_URI);
+await connectDb(env.DATABASE_URL);
 try {
-  const existing = await AdminAccount.findOne({ email });
+  const existing = await adminAccountRepo.findByEmail(email);
   if (existing) console.log(`Admin account already exists for ${email}; existing credentials were preserved.`);
   else {
-    await AdminAccount.create({ email, passwordHash: await bcrypt.hash(password, 12) });
+    await adminAccountRepo.create({ email, passwordHash: await bcrypt.hash(password, 12) });
     console.log(`Created admin account for ${email}.`);
   }
-} finally { await mongoose.disconnect(); }
+} finally { await closeDb(); }

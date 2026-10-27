@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Types } from "mongoose";
+import { newId } from "../src/db/ids.js";
 import { presentIngredient } from "../src/lib/pantry.js";
 import { canonicalStock, stockFingerprint } from "../src/lib/add-stock.js";
 import { planConsumption } from "../src/lib/consume.js";
 import type { IngredientStock } from "../src/domain/pantry.js";
-const batch = (quantity: number, expiryDate: Date | null = null, unit = "pcs") => ({ _id: new Types.ObjectId(), quantity, expiryDate, unit, source: "manual" as const });
-const stock = (batches: IngredientStock["batches"]): IngredientStock => ({ _id: new Types.ObjectId(), userId: new Types.ObjectId(), key: "banana", name: "banana", category: "produce", batches });
+const batch = (quantity: number, expiryDate: Date | null = null, unit = "pcs") => ({ _id: newId(), quantity, expiryDate, unit, source: "manual" as const });
+const stock = (batches: IngredientStock["batches"]): IngredientStock => ({ _id: newId(), userId: newId(), key: "banana", name: "banana", category: "produce", batches });
 test("totals and expiry order come from an ingredient's batches without changing stock", () => {
   const ingredient = stock([batch(3), batch(4, new Date("2026-10-17")), batch(2, new Date("2026-10-14"))]);
   const presented = presentIngredient(ingredient);

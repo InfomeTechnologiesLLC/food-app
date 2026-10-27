@@ -103,6 +103,9 @@ export default function SettingsScreen() {
         <ListRow icon="card-outline" label="Budget" value={humanize(prefs.budget)} onPress={() => open('budget')} />
       </ListCard>
 
+            <SectionLabel>Tracking</SectionLabel>
+      <ListCard><ListRow icon="trending-up-outline" iconColor={theme.tint} label="Progress & tracking" value="Food · Exercise" onPress={() => router.push('/progress')} /></ListCard>
+
       <SectionLabel>Training</SectionLabel>
       <ListCard><ListRow icon="barbell-outline" label="Exercise preferences" value={user.training.enabled ? humanize(user.training.goal) : 'Optional · Set up exercise'} onPress={() => router.push('/training-settings')} /></ListCard>
       <ReminderSettings />

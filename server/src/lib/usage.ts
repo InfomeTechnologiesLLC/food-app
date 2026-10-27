@@ -1,6 +1,4 @@
-import { User } from "../models/User.js";
-
-type Counter = "scansThisMonth" | "plansThisMonth";
+import { userRepo, type Counter, type UserDoc } from "../repos/users.js";
 
 // Monthly limits per plan. Infinity = unlimited.
 export const LIMITS: Record<string, Record<Counter, number>> = {
@@ -17,32 +15,23 @@ export const currentPeriod = () => new Date().toISOString().slice(0, 7); // "202
 export async function consumeUsage(userId: string, counter: Counter): Promise<boolean> {
   const period = currentPeriod();
   // Reset counters lazily on the first request of a new month
-  await User.updateOne(
-    { _id: userId, "usage.period": { $ne: period } },
-    { $set: { "usage.period": period, "usage.scansThisMonth": 0, "usage.plansThisMonth": 0 } }
-  );
-
-  const user = await User.findById(userId).select("plan");
+  await userRepo.resetUsageIfStale(userId, period);
+  const user = await userRepo.findById(userId);
   if (!user) return false;
   const limit = LIMITS[user.plan]?.[counter] ?? 0;
-
-  const filter = Number.isFinite(limit)
-    ? { _id: userId, [`usage.${counter}`]: { $lt: limit } }
-    : { _id: userId };
-  const result = await User.updateOne(filter, { $inc: { [`usage.${counter}`]: 1 } });
-  return result.modifiedCount === 1;
+  return userRepo.incrementUsage(userId, counter, limit);
 }
 
 /** Gives a unit back, e.g. when the AI call fails so the user isn't charged for it. */
 export async function refundUsage(userId: string, counter: Counter) {
-  await User.updateOne({ _id: userId, [`usage.${counter}`]: { $gt: 0 } }, { $inc: { [`usage.${counter}`]: -1 } });
+  await userRepo.decrementUsage(userId, counter);
 }
 
 /** User as the app sees it: no password hash, usage reset if it's from an old month, plus the plan's limits. */
-export function toPublicUser(user: { toObject: () => any }) {
-  const { passwordHash, ...u } = user.toObject();
+export function toPublicUser(user: Partial<UserDoc>) {
+  const { passwordHash, ...u } = user;
   const stale = u.usage?.period !== currentPeriod();
-  const limits = LIMITS[u.plan] ?? LIMITS.free;
+  const limits = LIMITS[u.plan ?? "free"] ?? LIMITS.free!;
   return {
     ...u,
     usage: stale ? { period: currentPeriod(), scansThisMonth: 0, plansThisMonth: 0 } : u.usage,

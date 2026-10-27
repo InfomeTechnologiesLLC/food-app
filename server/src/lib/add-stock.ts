@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import mongoose, { Types, type ClientSession } from "mongoose";
-import { PantryIngredient } from "../models/PantryIngredient.js";
-import { StockOperation } from "../models/StockOperation.js";
+import type { Conn } from "../db/client.js";
+import { transaction } from "../db/tx.js";
+import { pantryRepo, stockOperationRepo } from "../repos/pantry.js";
+import { userRepo } from "../repos/users.js";
 import { normalize } from "./ingredients.js";
 import { convert, stockUnit } from "./units.js";
 import type { StockInput } from "../domain/pantry.js";
@@ -19,33 +20,29 @@ export function stockFingerprint(items: StockInput[]) {
   return createHash("sha256").update(JSON.stringify(items.map(canonicalStock).map(({ name, quantity, unit, category, expiryDate, source }) => ({ name, quantity, unit, category, expiryDate, source })))).digest("hex");
 }
 
-/** Stock changes and their operation receipt commit together. No stock tombstones. */
-export async function addStockInSession(userId: string, key: string, items: StockInput[], session: ClientSession) {
+/** Stock changes and their operation receipt commit together. Must run inside a transaction. */
+export async function addStockInSession(userId: string, key: string, items: StockInput[], tx: Conn) {
   const normalized = items.map(canonicalStock);
   const fingerprint = stockFingerprint(items);
-  const previous = await StockOperation.findOne({ userId, key }).session(session);
+  // Serialize stock changes per user: concurrent requests wait here for each other.
+  await userRepo.lock(userId, tx);
+  const previous = await stockOperationRepo.find(userId, key, tx);
   if (previous) {
     if (previous.fingerprint !== fingerprint) throw new StockConflict("This save was already used for a different purchase.");
     return previous.batches;
   }
   const batches = [];
   for (const item of normalized) {
-    const batchId = new Types.ObjectId();
-    const ingredient = await PantryIngredient.findOneAndUpdate({ userId, key: item.name }, {
-      $setOnInsert: { userId, key: item.name, name: item.name, category: item.category },
-      $push: { batches: { _id: batchId, quantity: item.quantity, unit: item.unit, expiryDate: item.expiryDate, source: item.source } },
-    }, { upsert: true, returnDocument: "after", runValidators: true, session });
-    batches.push({ ingredientId: ingredient._id, batchId });
+    const ingredientId = await pantryRepo.ensureIngredient(tx, { userId, key: item.name, name: item.name, category: item.category });
+    const batchId = await pantryRepo.addBatch(tx, ingredientId, { quantity: item.quantity, unit: item.unit, expiryDate: item.expiryDate, source: item.source });
+    batches.push({ ingredientId, batchId });
   }
-  await StockOperation.create([{ userId, key, fingerprint, items: normalized, batches }], { session });
+  await stockOperationRepo.create(tx, { userId, key, fingerprint, items: normalized, batches });
   return batches;
 }
 
 export async function addStock(userId: string, key: string, items: StockInput[]) {
-  // Unique ingredient/operation insert races may abort a transaction. Restart from
-  // its beginning so the next snapshot sees the committed ingredient/receipt.
-  for (let attempt = 0; ; attempt++) {
-    try { return await mongoose.connection.transaction((session) => addStockInSession(userId, key, items, session)); }
-    catch (error) { if ((error as { code?: number }).code !== 11000 || attempt >= 2) throw error; }
-  }
+  // A duplicate-key race (two requests creating the same receipt) is retried from the
+  // start, so the second attempt sees the committed receipt and returns it.
+  return transaction((tx) => addStockInSession(userId, key, items, tx), { retryDuplicates: true });
 }
