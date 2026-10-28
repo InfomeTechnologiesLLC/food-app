@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 
+import { HealthCard } from '@/components/health-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { Button, ChipGroup } from '@/components/ui';
@@ -41,6 +42,8 @@ export default function ProgressScreen() {
 
   return (
     <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={p.refreshing} onRefresh={p.refetch} />}>
+            <HealthCard />
+
       <ChipGroup options={TABS} value={tab} onChange={setTab} format={(t) => (t === 'food' ? 'Food' : 'Exercise')} />
       <ChipGroup options={RANGES} value={range} onChange={setRange} format={(r) => `Last ${r} days`} />
 

@@ -15,6 +15,7 @@ export interface BodyMeasurements {
   heightCm?: number | null;
   weightKg?: number | null;
   weightUpdatedAt?: string | null;
+  targetWeightKg?: number | null;
 }
 
 export interface User {

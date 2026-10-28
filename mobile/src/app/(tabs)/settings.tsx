@@ -104,7 +104,10 @@ export default function SettingsScreen() {
       </ListCard>
 
             <SectionLabel>Tracking</SectionLabel>
-      <ListCard><ListRow icon="trending-up-outline" iconColor={theme.tint} label="Progress & tracking" value="Food · Exercise" onPress={() => router.push('/progress')} /></ListCard>
+            <ListCard>
+        <ListRow icon="trending-up-outline" iconColor={theme.tint} label="Progress & tracking" value="Food · Exercise" onPress={() => router.push('/progress')} />
+        <ListRow icon="help-circle-outline" label="How it works" value="Quick tutorial" onPress={() => router.push('/tutorial')} />
+      </ListCard>
 
       <SectionLabel>Training</SectionLabel>
       <ListCard><ListRow icon="barbell-outline" label="Exercise preferences" value={user.training.enabled ? humanize(user.training.goal) : 'Optional · Set up exercise'} onPress={() => router.push('/training-settings')} /></ListCard>

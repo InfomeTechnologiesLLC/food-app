@@ -10,7 +10,7 @@ export type Counter = "scansThisMonth" | "plansThisMonth";
 export interface UserDoc {
   _id: string; email: string; passwordHash: string; plan: "free" | "plus";
   preferences: { diet: string; allergies: string[]; goal: string; budget: string };
-  body: { heightCm: number | null; weightKg: number | null; weightUpdatedAt: Date | null };
+  body: { heightCm: number | null; weightKg: number | null; weightUpdatedAt: Date | null; targetWeightKg: number | null };
   training: { enabled: boolean; goal: Row["trainingGoal"]; experience: Row["trainingExperience"]; equipment: string[]; weekdays: number[]; sessionMinutes: number; excludedExercises: string[] };
   usage: { period: string; scansThisMonth: number; plansThisMonth: number };
   pushTokens: string[]; scheduleRevision: number; onboarded: boolean;
@@ -21,7 +21,7 @@ export function toUser(row: Row): UserDoc {
   return {
     _id: row.id, email: row.email, passwordHash: row.passwordHash, plan: row.plan,
     preferences: { diet: row.diet, allergies: row.allergies, goal: row.goal, budget: row.budget },
-    body: { heightCm: row.heightCm, weightKg: row.weightKg, weightUpdatedAt: row.weightUpdatedAt },
+    body: { heightCm: row.heightCm, weightKg: row.weightKg, weightUpdatedAt: row.weightUpdatedAt, targetWeightKg: row.targetWeightKg },
     training: { enabled: row.trainingEnabled, goal: row.trainingGoal, experience: row.trainingExperience, equipment: row.trainingEquipment,
       weekdays: row.trainingWeekdays, sessionMinutes: row.trainingSessionMinutes, excludedExercises: row.trainingExcludedExercises },
     usage: { period: row.usagePeriod, scansThisMonth: row.scansThisMonth, plansThisMonth: row.plansThisMonth },
@@ -92,7 +92,7 @@ export const userRepo = {
   /** Resets every profile field to its default, keeping only id, email, password hash and createdAt. */
   async resetToDefaults(id: string, conn: Conn = getDb()) {
     await conn.update(users).set({
-      plan: "free", diet: "none", allergies: [], goal: "balanced", budget: "medium", heightCm: null, weightKg: null, weightUpdatedAt: null,
+      plan: "free", diet: "none", allergies: [], goal: "balanced", budget: "medium", heightCm: null, weightKg: null, weightUpdatedAt: null, targetWeightKg: null,
       trainingEnabled: false, trainingGoal: "general_fitness", trainingExperience: "beginner", trainingEquipment: [], trainingWeekdays: [1, 3, 5],
       trainingSessionMinutes: 30, trainingExcludedExercises: [], usagePeriod: new Date().toISOString().slice(0, 7), scansThisMonth: 0, plansThisMonth: 0,
       pushTokens: [], scheduleRevision: 0, onboarded: false,

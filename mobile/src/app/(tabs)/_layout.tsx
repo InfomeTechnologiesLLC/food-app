@@ -9,7 +9,8 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
-import { useExpiryReminderSync } from '@/lib/reminders';
+import { useActivityReminderSync, useExpiryReminderSync } from '@/lib/reminders';
+import { useFirstLoginTutorial } from '@/lib/tutorial';
 import { remaining } from '@/lib/usage';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -33,7 +34,9 @@ export default function TabsLayout() {
   const pathname = usePathname();
   const { user } = useAuth();
   const scansLeft = remaining(user, 'scans');
-  useExpiryReminderSync();
+   useExpiryReminderSync();
+  useActivityReminderSync();
+  useFirstLoginTutorial();
 
   const scansPill = pathname === '/scan' && scansLeft !== null && (
     <Pressable

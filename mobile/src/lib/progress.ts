@@ -122,6 +122,9 @@ export function useProgress(range: RangeDays) {
     loading: history.isLoading || plans.isLoading || sessionPages.isLoading,
     error: history.error ?? plans.error ?? plan.error,
     refetch: () => { void history.refetch(); void plans.refetch(); void sessionPages.refetch(); },
-    refreshing: history.isRefetching || sessionPages.isRefetching,
+        refreshing: history.isRefetching || sessionPages.isRefetching,
+    today,
+    mealPlanDates: plan.data?.days.map((d) => d.date).filter((d): d is string => !!d) ?? [],
+    workoutDates: [...plannedDates].filter((d): d is string => !!d),
   };
 }

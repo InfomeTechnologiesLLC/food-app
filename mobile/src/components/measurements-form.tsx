@@ -6,6 +6,7 @@ import { Button, Input } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import { parseMeasurements } from '@/lib/measurements';
+import { useLogWeight } from '@/lib/weight';
 import type { BodyMeasurements } from '@/lib/types';
 
 export function MeasurementInputs({ height, weight, onHeightChange, onWeightChange }: {
@@ -24,6 +25,7 @@ export function MeasurementInputs({ height, weight, onHeightChange, onWeightChan
 
 export function MeasurementsForm({ initial, onSaved }: { initial: BodyMeasurements; onSaved: () => void }) {
   const { updateBody } = useAuth();
+  const logWeight = useLogWeight();
   const [height, setHeight] = useState(initial.heightCm?.toString() ?? '');
   const [weight, setWeight] = useState(initial.weightKg?.toString() ?? '');
   const [saving, setSaving] = useState(false);
@@ -32,7 +34,10 @@ export function MeasurementsForm({ initial, onSaved }: { initial: BodyMeasuremen
     setSaving(true);
     setError(null);
     try {
-      await updateBody(parseMeasurements(height, weight));
+            const next = parseMeasurements(height, weight);
+      await updateBody(next);
+      // Keep the weight history in step with the weight shown on the profile
+      if (next.weightKg !== null && next.weightKg !== initial.weightKg) await logWeight.mutateAsync({ weightKg: next.weightKg });
       onSaved();
     } catch (e) {
       setError((e as Error).message);

@@ -50,7 +50,8 @@ function RootNavigator() {
           }} />
           <Stack.Screen name="reauth" options={{ headerShown: true, title: 'Sign in' }} />
                     <Stack.Screen name="food-history" options={{ headerShown: true, title: 'Food history' }} />
-          <Stack.Screen name="progress" options={{ headerShown: true, title: 'Progress & tracking' }} />
+                   <Stack.Screen name="progress" options={{ headerShown: true, title: 'Progress & tracking' }} />
+          <Stack.Screen name="tutorial" options={{ headerShown: false, presentation: 'modal' }} />
           <Stack.Screen name="upgrade" options={{ headerShown: true, title: 'Plans', presentation: 'modal' }} />
           <Stack.Screen
             name="pantry-item"

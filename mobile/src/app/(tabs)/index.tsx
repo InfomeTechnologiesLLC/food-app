@@ -4,6 +4,7 @@ import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BmiCard } from '@/components/bmi-card';
 import { DailyProgressCard } from '@/components/daily-progress-card';
+import { HealthCard } from '@/components/health-card';
 import { ExerciseProgressCard } from '@/components/exercise-progress-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
@@ -124,6 +125,8 @@ export default function HomeScreen() {
           </ThemedText>
         )}
       </View>
+
+            <HealthCard compact />
 
       <View style={[styles.progressCard, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
         <ThemedText style={{ fontSize: 20, fontWeight: 700 }}>Today’s progress</ThemedText>
