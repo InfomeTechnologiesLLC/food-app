@@ -11,6 +11,7 @@ import { userRepo } from "../src/repos/users.js";
 import { pantryRepo, stockOperationRepo } from "../src/repos/pantry.js";
 import { buildPlan, mealPlanRepo, type PlanDoc } from "../src/repos/meal-plans.js";
 import { foodHistoryRepo } from "../src/repos/food-history.js";
+import { plannedDayRepo } from "../src/repos/planned-days.js";
 import { scanRepo } from "../src/repos/scans.js";
 import { calendarToday, addDays } from "../src/lib/calendar.js";
 import { ScheduleConflict } from "../src/lib/schedule.js";
@@ -220,8 +221,11 @@ test("undo past history after replacement restores stock once without restoring 
   assert.equal((await invoke(planRoutes, "/replace", "post", { body: { ...target(current), previewToken: previewToken(draft) } })).status, 200);
   const request = { params: { id: String(entry._id) } };
   await Promise.all([invoke(historyRoutes, "/:id/undo", "post", request), invoke(historyRoutes, "/:id/undo", "post", request)]);
-  assert.equal(await findPlan(plan._id), null); assert.equal(await mealPlanRepo.count(), 1);
+   assert.equal(await findPlan(plan._id), null); assert.equal(await mealPlanRepo.count(), 1);
   assert.equal(await liveHistory(), 0);
+  // The replaced plan's finished day is kept for progress tracking
+  const yesterday = addDays(calendarToday("UTC"), -1);
+  assert.deepEqual(await plannedDayRepo.list(userId, yesterday, yesterday), [{ kind: "meal", date: yesterday, planned: current.days[0]!.meals.length }]);
   assert.equal(presentIngredient((await readPantry(userId))[0]!).totals[0]!.quantity, 3);
 });
 test("development mock reset removes domain data and preserves login credentials; production reset is refused", async () => {

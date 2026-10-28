@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import * as SecureStore from '@/lib/secure-storage';
 import { useEffect, useState } from 'react';
 import { Appearance, Platform } from 'react-native';
 

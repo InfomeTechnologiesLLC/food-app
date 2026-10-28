@@ -19,6 +19,8 @@ import { pantryRepo, stockOperationRepo } from "../repos/pantry.js";
 import { workoutPlanRepo } from "../repos/workouts.js";
 import { userRepo } from "../repos/users.js";
 import { foodHistoryRepo } from "../repos/food-history.js";
+import { plannedDayRepo } from "../repos/planned-days.js";
+import { mealPlanDays } from "../lib/planned-days.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -172,8 +174,12 @@ router.post("/replace", async (req: AuthRequest, res) => {
       day.meals = orderedMeals(day.day === 1 ? [...protectedMeals, ...incoming.filter((meal) => !types.has(meal.type))] : incoming);
     });
     const signature = (days: DayDoc[]) => JSON.stringify(days.map((day) => ({ date: day.date, meals: orderedMeals([...day.meals]).map(recipeKey) })));
-    if (active && signature(active.days) === signature(draft.days)) throw new ScheduleConflict("That replacement would not change any meals.");
-    if (active) await mealPlanRepo.delete(tx, active._id);
+        if (active && signature(active.days) === signature(draft.days)) throw new ScheduleConflict("That replacement would not change any meals.");
+    if (active) {
+      // Keep the finished days of the old plan so progress tracking still counts them
+      await plannedDayRepo.recordPast(tx, req.userId!, "meal", mealPlanDays(active), today);
+      await mealPlanRepo.delete(tx, active._id);
+    }
     draft.status = "active";
     draft.startDate = today;
     return mealPlanRepo.insert(tx, draft);

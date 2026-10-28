@@ -1,4 +1,5 @@
 // Creates/updates all tables: `npm run db:migrate`. Safe to run repeatedly.
+import "dotenv/config";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

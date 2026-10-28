@@ -54,6 +54,8 @@ Each MongoDB collection is now a table. Each list that used to be nested inside 
 | | `workout_sessions` | a logged workout (its id is a UUID made by the phone) | `users` |
 | | `workout_session_exercises` | one exercise in that workout | `workout_sessions` |
 | | `workout_session_sets` | one set (reps, weight, duration, status) | `workout_session_exercises` |
+| Progress | `weight_logs` | one weigh-in per user per day | `users` |
+| | `planned_days` | what was planned on a past day (number of meals, or 1 for a training day), saved when the meal or workout plan that covered it is replaced or deleted, so progress tracking keeps counting it | `users` |
 
 `__drizzle_migrations` is bookkeeping. It records which schema changes have already been applied, so leave it alone.
 

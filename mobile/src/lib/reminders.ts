@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+   import * as SecureStore from '@/lib/secure-storage';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
@@ -51,8 +51,8 @@ const listeners = new Set<(s: ReminderSettings) => void>();
 
 async function loadSettings(): Promise<ReminderSettings> {
   if (settingsCache) return settingsCache;
-  const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
-    // Settings saved by older versions lack the newer fields, so fill them from the defaults
+   const raw = await SecureStore.getItemAsync(SETTINGS_KEY);
+  // Settings saved by older versions lack the newer fields, so fill them from the defaults
   settingsCache = raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) as Partial<ReminderSettings> } : DEFAULT_SETTINGS;
   return settingsCache!;
 }
@@ -79,8 +79,8 @@ export async function ensureNotificationPermission() {
   if (!Notifications) return false;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: 'Expiry reminders',
-           importance: Notifications.AndroidImportance.HIGH,
+          name: 'Expiry reminders',
+      importance: Notifications.AndroidImportance.HIGH,
     });
     await Notifications.setNotificationChannelAsync(ACTIVITY_CHANNEL_ID, {
       name: 'Meal, workout and weigh-in reminders',
@@ -144,8 +144,8 @@ export async function syncActivityReminders(reminders: ActivityReminder[]) {
 }
 
 export async function sendTestReminder() {
-  if (!Notifications) throw new Error('Reminders need the installed MealMind app. They are not available in Expo Go.');
-  if (!(await ensureNotificationPermission())) throw new Error('Notifications are blocked. Enable them in Android settings.');
+    if (!Notifications) throw new Error('Reminders need the installed MealMind app. They are not available in Expo Go.');
+  if (!(await ensureNotificationPermission())) throw new Error('Notifications are blocked. Enable them for MealMind in your phone settings.');
   await Notifications.scheduleNotificationAsync({
     content: { title: 'MealMind reminders are on 🎉', body: "This is what you'll see when food is about to expire.", data: { url: '/pantry' } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5, channelId: CHANNEL_ID },

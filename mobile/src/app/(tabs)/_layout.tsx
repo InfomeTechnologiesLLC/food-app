@@ -33,8 +33,8 @@ export default function TabsLayout() {
   const theme = useTheme();
   const pathname = usePathname();
   const { user } = useAuth();
-  const scansLeft = remaining(user, 'scans');
-   useExpiryReminderSync();
+    const scansLeft = remaining(user, 'scans');
+  useExpiryReminderSync();
   useActivityReminderSync();
   useFirstLoginTutorial();
 

@@ -1,5 +1,8 @@
-/** Measurements are stored in centimetres and kilograms; blank fields remove them. */
-export function parseMeasurements(height: string, weight: string) {
+/**
+ * Measurements are stored in centimetres and kilograms; blank fields remove them.
+ * `target` is optional: leave it out to keep the saved target weight unchanged.
+ */
+export function parseMeasurements(height: string, weight: string, target?: string) {
   const parse = (text: string, label: string, min: number, max: number) => {
     const normalized = text.trim().replace(',', '.');
     if (!normalized) return null;
@@ -11,7 +14,8 @@ export function parseMeasurements(height: string, weight: string) {
   };
   return {
     heightCm: parse(height, 'Height in cm', 50, 250),
-    weightKg: parse(weight, 'Weight in kg', 10, 500),
+     weightKg: parse(weight, 'Weight in kg', 10, 500),
+    ...(target === undefined ? {} : { targetWeightKg: parse(target, 'Target weight in kg', 10, 500) }),
   };
 }
 

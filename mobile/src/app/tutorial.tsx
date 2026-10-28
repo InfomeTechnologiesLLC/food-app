@@ -36,8 +36,15 @@ export default function TutorialScreen() {
     if (user) markTutorialSeen(user._id);
     if (router.canGoBack()) router.back(); else router.replace('/');
   };
-  const next = () => (last ? finish() : list.current?.scrollToIndex({ index: index + 1, animated: true }));
-  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => setIndex(Math.round(e.nativeEvent.contentOffset.x / pageWidth));
+  const next = () => {
+    if (last) return finish();
+    // Update the step here too: some platforms (web) don't report the end of a programmatic scroll
+    list.current?.scrollToIndex({ index: index + 1, animated: true });
+    setIndex(index + 1);
+  };
+  // Swipes report where they stopped; clamp in case the list overshoots
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
+    setIndex(Math.min(SLIDES.length - 1, Math.max(0, Math.round(e.nativeEvent.contentOffset.x / pageWidth))));
 
   return (
     <ThemedView style={{ flex: 1 }}>

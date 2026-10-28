@@ -10,8 +10,15 @@ import { EXERCISES, exerciseById, trainingSchema, validateWorkout, workoutOutput
 import { calendarToday, dateSchema, timezoneSchema } from '../lib/calendar.js';
 import { generateWorkout } from '../ai/exercise.js';
 import { AIError } from '../ai/gemini.js';
+import { plannedDayRepo } from '../repos/planned-days.js';
+import { workoutPlanDays } from '../lib/planned-days.js';
 const router = Router();
 router.use(requireAuth);
+/** "Today" in the timezone the plan was created in (plans are generated with the user's timezone). */
+const planToday = (plan: { context: unknown }) => {
+  const tz = timezoneSchema.safeParse((plan.context as Partial<WorkoutContext> | null)?.timezone);
+  return calendarToday(tz.success ? tz.data : 'UTC');
+};
 router.get('/library', (_req, res) => res.json(EXERCISES));
 router.get('/plans', async (req: AuthRequest, res) => res.json(await workoutPlanRepo.listForUser(req.userId!, 30)));
 router.post('/plans', async (req: AuthRequest, res) => {
@@ -50,8 +57,12 @@ router.post('/plans/:id/activate', async (req: AuthRequest, res) => {
     const plan = await workoutPlanRepo.findById(req.params.id as string, req.userId!, tx, { lock: true });
     const active = await workoutPlanRepo.findActive(req.userId!, tx, { lock: true });
     if (plan?.status === 'active') return plan;
-    if (!plan || plan.status !== 'draft' || plan.__v !== body.data.revision || (active ? active._id : null) !== body.data.activeId || (active?.__v ?? null) !== body.data.activeRevision) { conflict = true; return null; }
-    if (active) await workoutPlanRepo.delete(tx, active._id, req.userId!);
+       if (!plan || plan.status !== 'draft' || plan.__v !== body.data.revision || (active ? active._id : null) !== body.data.activeId || (active?.__v ?? null) !== body.data.activeRevision) { conflict = true; return null; }
+    if (active) {
+      // Keep the finished days of the old plan so progress tracking still counts them
+      await plannedDayRepo.recordPast(tx, req.userId!, 'workout', workoutPlanDays(active), planToday(active));
+      await workoutPlanRepo.delete(tx, active._id, req.userId!);
+    }
     return workoutPlanRepo.activate(tx, plan._id);
   });
   if (conflict) return res.status(409).json({ error: 'Your schedule changed. Refresh before activating.' });
@@ -60,7 +71,9 @@ router.post('/plans/:id/activate', async (req: AuthRequest, res) => {
 router.delete('/plans/:id', async (req: AuthRequest, res) => {
   if (!isId(req.params.id)) return res.status(400).json({ error: 'Invalid plan ID' });
   await transaction(async tx => {
-    await userRepo.bumpScheduleRevision(req.userId!, tx);
+        await userRepo.bumpScheduleRevision(req.userId!, tx);
+    const plan = await workoutPlanRepo.findById(req.params.id as string, req.userId!, tx, { lock: true });
+    if (plan?.status === 'active') await plannedDayRepo.recordPast(tx, req.userId!, 'workout', workoutPlanDays(plan), planToday(plan));
     await workoutPlanRepo.delete(tx, req.params.id as string, req.userId!);
   });
   res.status(204).end();

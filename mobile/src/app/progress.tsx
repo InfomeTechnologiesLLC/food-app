@@ -41,20 +41,23 @@ export default function ProgressScreen() {
   const unit = isFood ? 'meals eaten' : 'planned workouts done';
 
   return (
-    <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={p.refreshing} onRefresh={p.refetch} />}>
-            <HealthCard />
+        <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={p.refreshing} onRefresh={p.refetch} />}>
+      <HealthCard />
 
       <ChipGroup options={TABS} value={tab} onChange={setTab} format={(t) => (t === 'food' ? 'Food' : 'Exercise')} />
       <ChipGroup options={RANGES} value={range} onChange={setRange} format={(r) => `Last ${r} days`} />
 
       {p.loading && <ActivityIndicator color={theme.tint} />}
       {p.error && (
-        <>
-          <ThemedText themeColor="danger">{p.error.message}</ThemedText>
+               <>
+          <ThemedText themeColor="danger">Some of your data couldn&apos;t load ({p.error.message}), so these numbers may be incomplete.</ThemedText>
           <Button title="Try again" onPress={p.refetch} />
         </>
       )}
 
+      
+        {/* Without complete data a "nothing planned" message would be wrong, so the card waits for it */}
+      {!p.loading && !(p.error && view.summary.percent === null) && (
       <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
         <ThemedText type="smallBold" themeColor={v.color}>{v.label}</ThemedText>
         {view.summary.percent !== null ? (
@@ -74,9 +77,10 @@ export default function ProgressScreen() {
           </ThemedText>
         )}
         {!isFood && !p.exercise.enabled && <Button title="Set up exercise" variant="secondary" onPress={() => router.push('/training-settings')} />}
-      </View>
+            </View>
+      )}
 
-      {view.days.map((day) => {
+      {!p.loading && view.days.map((day) => {
         const s = STATUS[day.status];
         return (
           <View key={day.date} style={[styles.row, { borderBottomColor: theme.border }]}>

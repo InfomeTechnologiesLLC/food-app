@@ -17,7 +17,7 @@ import { UsageCard } from '@/components/usage-card';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
-import type { Preferences } from '@/lib/types';
+import type { BodyMeasurements, Preferences } from '@/lib/types';
 
 type Field = 'diet' | 'allergies' | 'goal' | 'measurements' | 'budget';
 
@@ -31,6 +31,12 @@ const SHEET_TITLES: Record<Field, string> = {
 
 /** "alex.smith@x.com" → "Alex" */
 const nameFromEmail = (email: string) => humanize(email.split('@')[0].split(/[._\-+0-9]/)[0] || email.split('@')[0]);
+
+/** "170 cm · 66 kg → 80 kg" */
+function bodySummary(body: BodyMeasurements) {
+  const weight = body.weightKg ? `${body.weightKg} kg${body.targetWeightKg ? ` → ${body.targetWeightKg} kg` : ''}` : null;
+  return [body.heightCm ? `${body.heightCm} cm` : null, weight].filter(Boolean).join(' · ') || 'Add height and weight';
+}
 
 function summarizeAllergies(allergies: string[]) {
   if (allergies.length === 0) return 'None';
@@ -59,10 +65,10 @@ export default function SettingsScreen() {
   const set = <K extends keyof Preferences>(key: K, value: Preferences[K]) => setDraft((d) => d && { ...d, [key]: value });
 
   const save = async () => {
-    if (!draft) return;
+    // Measurements have their own form with its own save button
+    if (!draft || !editing || editing === 'measurements') return;
     setSaving(true);
     try {
-      if (!editing || editing === "measurements") return;
       await updatePreferences({ [editing]: draft[editing] });
       close();
     } catch (e) {
@@ -98,13 +104,14 @@ export default function SettingsScreen() {
       <ListCard>
         <ListRow icon="leaf-outline" iconColor={theme.tint} label="Diet" value={prefs.diet === 'none' ? 'No restrictions' : humanize(prefs.diet)} onPress={() => open('diet')} />
         <ListRow icon="shield-outline" iconColor={theme.danger} label="Allergies" value={summarizeAllergies(prefs.allergies)} onPress={() => open('allergies')} />
-        <ListRow icon="radio-button-on-outline" iconColor={theme.warning} label="Nutrition goal" value={humanize(prefs.goal)} onPress={() => open('goal')} />
-        <ListRow icon="body-outline" label="Body measurements" value={[user.body.heightCm ? `${user.body.heightCm} cm` : null, user.body.weightKg ? `${user.body.weightKg} kg` : null].filter(Boolean).join(' · ') || 'Add height and weight'} onPress={() => open('measurements')} />
+               <ListRow icon="radio-button-on-outline" iconColor={theme.warning} label="Nutrition goal" value={humanize(prefs.goal)} onPress={() => open('goal')} />
+        <ListRow icon="body-outline" label="Body measurements" value={bodySummary(user.body)} onPress={() => open('measurements')} />
         <ListRow icon="card-outline" label="Budget" value={humanize(prefs.budget)} onPress={() => open('budget')} />
       </ListCard>
 
-            <SectionLabel>Tracking</SectionLabel>
-            <ListCard>
+          
+      <SectionLabel>Tracking</SectionLabel>
+      <ListCard>
         <ListRow icon="trending-up-outline" iconColor={theme.tint} label="Progress & tracking" value="Food · Exercise" onPress={() => router.push('/progress')} />
         <ListRow icon="help-circle-outline" label="How it works" value="Quick tutorial" onPress={() => router.push('/tutorial')} />
       </ListCard>
@@ -164,8 +171,8 @@ export default function SettingsScreen() {
         {editing === 'measurements' && <MeasurementsForm initial={user.body} onSaved={close} />}
         {draft && editing === 'budget' && (
           <ChipGroup options={BUDGETS} value={draft.budget} onChange={(v) => set('budget', v)} format={humanize} />
-        )}
-        {editing !== "measurements" && <Button title="Save" onPress={save} loading={saving} />}
+                )}
+        {editing !== 'measurements' && <Button title="Save" onPress={save} loading={saving} />}
       </BottomSheet>
     </Screen>
   );

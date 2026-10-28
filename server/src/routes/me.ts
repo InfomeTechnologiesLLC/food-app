@@ -6,6 +6,7 @@ import { trainingSchema, exerciseById } from "../domain/exercise.js";
 import { toPublicUser } from "../lib/usage.js";
 import { weightRepo } from "../repos/weights.js";
 import { addDays, dateSchema } from "../lib/calendar.js";
+import { plannedDayRepo } from "../repos/planned-days.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -62,5 +63,13 @@ router.put("/weights/:date", async (req: AuthRequest, res) => {
   await weightRepo.upsert(req.userId!, date.data, body.data.weightKg);
   await syncCurrentWeight(req.userId!);
   res.json({ date: date.data, weightKg: body.data.weightKg });
+});
+
+// What was planned on past days whose plan has since been replaced or deleted (see lib/planned-days.ts)
+router.get("/planned-days", async (req: AuthRequest, res) => {
+  const parsed = z.object({ from: dateSchema, to: dateSchema }).strict()
+    .refine((q) => q.from <= q.to && q.to <= addDays(q.from, 400)).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid date range" });
+  res.json(await plannedDayRepo.list(req.userId!, parsed.data.from, parsed.data.to));
 });
 export default router;

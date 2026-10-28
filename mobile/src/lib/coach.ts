@@ -1,14 +1,15 @@
-import { calculateBmi } from '@/lib/measurements';
-import type { WeightEntry } from '@/lib/weight';
+// Relative imports so the server test runner (plain Node) can load this file
+import { calculateBmi } from './measurements';
+import type { WeightEntry } from './weight';
 
 /**
  * Rule-based coaching: turns the user's weight, meals and workouts into a plain-language status and next steps.
  * Pure functions (no React) so every rule can be tested. General guidance only, not medical advice.
  */
 
-/** Weight changes per week that count as healthy for each goal, in kg. */
-export const LOSS_RANGE = { min: 0.2, max: 1 } as const;
-export const GAIN_RANGE = { min: 0.1, max: 0.6 } as const;
+/** Weight changes per week that count as healthy for each goal, in kg (loss 0.25–1, gain 0.25–0.5). */
+export const LOSS_RANGE = { min: 0.25, max: 1 } as const;
+export const GAIN_RANGE = { min: 0.25, max: 0.5 } as const;
 export const STEADY_BAND = 0.3;
 /** WHO adult BMI cut-offs. */
 export const BMI_CUTOFFS = { under: 18.5, over: 25, obese: 30 } as const;
@@ -76,14 +77,14 @@ export function assessWeight(i: CoachInput) {
   }
   const p = perWeek;
   if (i.goal === 'weight_loss') {
-    if (p <= -LOSS_RANGE.max) return out('watch', 'Losing faster than recommended', `About ${kg(p)} kg a week. A steady 0.25 to 1 kg a week is easier to keep. Make sure you eat all your planned meals.`);
+    if (p < -LOSS_RANGE.max) return out('watch', 'Losing faster than recommended', `About ${kg(p)} kg a week. A steady 0.25 to 1 kg a week is easier to keep. Make sure you eat all your planned meals.`);
     if (p <= -LOSS_RANGE.min) return out('on_track', 'Losing steadily', `About ${kg(p)} kg a week, which is a healthy pace.`);
     if (p < LOSS_RANGE.min) return out('watch', 'Weight is not moving yet', 'Your goal is weight loss. Stick to your planned meals and add a workout this week.');
     return out('watch', 'Weight is going up', `Up about ${kg(p)} kg a week. Compare your portions with the plan and add some movement.`);
   }
   if (i.goal === 'muscle_gain') {
-    if (p >= GAIN_RANGE.min && p <= GAIN_RANGE.max) return out('on_track', 'Gaining steadily', `About ${kg(p)} kg a week, a good pace for building muscle.`);
-    if (p > GAIN_RANGE.max) return out('watch', 'Gaining quickly', `Up about ${kg(p)} kg a week. Gains faster than about 0.5 kg a week are often mostly fat.`);
+      if (p >= GAIN_RANGE.min && p <= GAIN_RANGE.max) return out('on_track', 'Gaining steadily', `About ${kg(p)} kg a week, a good pace for building muscle.`);
+    if (p > GAIN_RANGE.max) return out('watch', 'Gaining quickly', `Up about ${kg(p)} kg a week. Gains faster than about ${GAIN_RANGE.max} kg a week are often mostly fat.`);
     if (p > -GAIN_RANGE.min) return out('watch', 'Weight is not moving yet', 'To build muscle, eat all your planned meals and keep training with gradually heavier weights.');
     return out('watch', 'Weight is dropping', `Down about ${kg(p)} kg a week. Eat all your planned meals, especially the protein.`);
   }

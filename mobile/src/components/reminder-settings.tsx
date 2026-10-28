@@ -31,9 +31,10 @@ export function ReminderSettings() {
   const [timeFor, setTimeFor] = useState<Kind | null>(null);
   if (!notificationsSupported || !settings) return null;
 
-   const toggle = async (key: 'enabled' | (typeof ACTIVITY)[Kind]['enabled'], on: boolean) => {
+   
+  const toggle = async (key: 'enabled' | (typeof ACTIVITY)[Kind]['enabled'], on: boolean) => {
     if (on && !(await ensureNotificationPermission())) {
-      return showAlert('Notifications blocked', 'Allow notifications for MealMind in Android settings to get reminders.');
+      return showAlert('Notifications blocked', 'Allow notifications for MealMind in your phone settings to get reminders.');
     }
     await saveReminderSettings({ ...settings, [key]: on } as ReminderPrefs);
   };
@@ -66,9 +67,9 @@ export function ReminderSettings() {
               onValueChange={(v) => toggle('enabled', v)}
               trackColor={{ true: theme.tint, false: theme.backgroundSelected }}
               thumbColor="#ffffff"
-            />
-                  }
-        />
+                        />
+          }
+        />  
         {activityRow('meals')}
         {activityRow('workout')}
         {activityRow('weighIn')}
@@ -94,8 +95,8 @@ export function ReminderSettings() {
               .catch((e) => showAlert('Oops', e.message))
           }>
           <ThemedText type="smallBold" style={{ color: theme.tint }}>Send a test notification</ThemedText>
-        </Pressable>
-               <Button title="Done" onPress={() => setOpen(false)} />
+               </Pressable>
+        <Button title="Done" onPress={() => setOpen(false)} />
       </BottomSheet>
 
       <BottomSheet visible={!!timeFor} title={timeFor ? ACTIVITY[timeFor].label : ''} subtitle={timeFor ? ACTIVITY[timeFor].blurb : undefined} onClose={() => setTimeFor(null)}>

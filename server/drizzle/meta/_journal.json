@@ -15,6 +15,13 @@
       "when": 1793073704939,
       "tag": "0001_weight_log",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1793170613634,
+      "tag": "0002_planned_days",
+      "breakpoints": true
     }
   ]
 }
