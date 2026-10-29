@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { addDays, calendarToday } from '../src/lib/calendar.js';
 import { DEFAULT_TRAINING, availableExercises, validateWorkout, workoutOutputSchema, sessionPayloadSchema, trainingSchema, type WorkoutContext, type WorkoutOutput } from '../src/domain/exercise.js';
 process.env.DATABASE_URL = 'mysql://localhost/mealmind-test';
-process.env.JWT_SECRET = 'mealmind-test-secret';
+process.env.JWT_SECRET = 'mealmind-test-secret-at-least-32-characters';
 process.env.GEMINI_API_KEY = 'mealmind-test-key';
 const { generateWorkout, workoutPrompt, workoutResponseSchema } = await import('../src/ai/exercise.js');
 const { gemini } = await import('../src/ai/gemini.js');

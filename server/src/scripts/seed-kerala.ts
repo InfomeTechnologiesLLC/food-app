@@ -89,7 +89,7 @@ try {
   if (!target && !existing) throw new Error("Account not found.");
   const accountId = target?.account._id ?? existing!._id;
   const training = { ...DEFAULT_TRAINING, enabled: true, equipment: ['dumbbells'] as ['dumbbells'] };
-  const body = { heightCm: 170, weightKg: 68, weightUpdatedAt: new Date(), targetWeightKg: null };
+  const body = { heightCm: 170, weightKg: 68, weightUpdatedAt: new Date(), targetWeightKg: null, sex: "male" as const, birthYear: 1995, activityLevel: "moderate" as const, goalWeeks: null };
   const workout = workoutOutputSchema.parse({ title: 'A manageable week · Kerala mock profile', days: Array.from({ length: 7 }, (_, index) => {
     const date = addDays(startDate, index);
     const train = training.weekdays.includes(new Date(`${date}T00:00:00Z`).getUTCDay());

@@ -25,7 +25,7 @@ const SHEET_TITLES: Record<Field, string> = {
   diet: 'Diet',
   allergies: 'Allergies',
   goal: 'Health goal',
-  measurements: 'Body measurements',
+  measurements: 'Body and goal',
   budget: 'Budget',
 };
 
@@ -105,7 +105,7 @@ export default function SettingsScreen() {
         <ListRow icon="leaf-outline" iconColor={theme.tint} label="Diet" value={prefs.diet === 'none' ? 'No restrictions' : humanize(prefs.diet)} onPress={() => open('diet')} />
         <ListRow icon="shield-outline" iconColor={theme.danger} label="Allergies" value={summarizeAllergies(prefs.allergies)} onPress={() => open('allergies')} />
                <ListRow icon="radio-button-on-outline" iconColor={theme.warning} label="Nutrition goal" value={humanize(prefs.goal)} onPress={() => open('goal')} />
-        <ListRow icon="body-outline" label="Body measurements" value={bodySummary(user.body)} onPress={() => open('measurements')} />
+        <ListRow icon="body-outline" label="Body and goal" value={bodySummary(user.body)} onPress={() => open('measurements')} />
         <ListRow icon="card-outline" label="Budget" value={humanize(prefs.budget)} onPress={() => open('budget')} />
       </ListCard>
 

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { MeasurementInputs } from '@/components/measurements-form';
-import { parseMeasurements } from '@/lib/measurements';
+import { ProfileInputs, profileDraft } from '@/components/profile-inputs';
+import { parseMeasurements, parseProfile } from '@/lib/measurements';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Chip, ChipGroup, Input, Section, humanize } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
@@ -25,6 +26,7 @@ export function PreferencesForm({
   const [height, setHeight] = useState(body.heightCm?.toString() ?? "");
     const [weight, setWeight] = useState(body.weightKg?.toString() ?? "");
   const [target, setTarget] = useState(body.targetWeightKg?.toString() ?? "");
+  const [profile, setProfile] = useState(() => profileDraft(body));
   const [customAllergy, setCustomAllergy] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function PreferencesForm({
     setSaving(true);
     setError(null);
         try {
-      await onSubmit(prefs, parseMeasurements(height, weight, target));
+      await onSubmit(prefs, { ...parseMeasurements(height, weight, target), ...parseProfile(profile) });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -83,9 +85,10 @@ export function PreferencesForm({
         <ChipGroup options={BUDGETS} value={prefs.budget} onChange={(v) => set('budget', v)} format={humanize} />
       </Section>
 
-            <Section title="Body measurements (optional)">
-        <ThemedText type="small" themeColor="textSecondary">Add these to see your BMI, track progress toward your target and give your AI meal planner more context. Leave them blank to skip.</ThemedText>
+      <Section title="Your body and goal">
+        <ThemedText type="small" themeColor="textSecondary">With these, MealMind works out your daily calories, protein, carbs, fat and water, and plans meals to match. You can skip any of them and add them later in Profile.</ThemedText>
         <MeasurementInputs height={height} weight={weight} target={target} onHeightChange={setHeight} onWeightChange={setWeight} onTargetChange={setTarget} />
+        <ProfileInputs value={profile} onChange={setProfile} />
       </Section>
 
       {error && <ThemedText themeColor="danger">{error}</ThemedText>}

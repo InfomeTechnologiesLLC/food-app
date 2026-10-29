@@ -14,12 +14,13 @@ import { markTutorialSeen } from '@/lib/tutorial';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 const SLIDES: { icon: IconName; title: string; body: string }[] = [
-  { icon: 'home-outline', title: 'Welcome to MealMind', body: 'The Today tab shows your pantry, your meals and workout for today, and a health check that tells you what to do next.' },
+  { icon: 'home-outline', title: 'Welcome to MealMind', body: 'The Today tab shows your daily calorie, protein, carbs, fat and water targets, how much you have had so far, and what to do next.' },
+  { icon: 'water-outline', title: 'Drink enough water', body: 'Tap Glass or Bottle on the Today tab each time you drink. Your goal is based on your weight and activity.' },
   { icon: 'restaurant-outline', title: 'Plan meals from what you have', body: 'In the Meals tab, create a plan that fits your diet and allergies. Scan groceries or a receipt to keep your pantry up to date.' },
   { icon: 'checkmark-done-outline', title: 'Mark meals as eaten', body: 'Tap a meal to mark it eaten. It is saved to your food history and the ingredients are taken out of your pantry. You can undo it any time.' },
   { icon: 'barbell-outline', title: 'Add exercise (optional)', body: 'In the Exercise tab, set up your training days and create a workout plan. Log your sets as you go. Everything saves automatically, even offline.' },
   { icon: 'trending-up-outline', title: 'See if you are on track', body: 'Log your weight about once a week. Under Profile > Progress & tracking you can see your meals, workouts and weight trend, with clear next steps.' },
-  { icon: 'notifications-outline', title: 'Get gentle reminders', body: 'MealMind can remind you to log your meals, do your workout and weigh in. Change the times or turn them off under Profile > Notifications.' },
+  { icon: 'notifications-outline', title: 'Get gentle reminders', body: 'MealMind reminds you to drink water, log your meals, do your workout and weigh in. Change the times or turn them off under Profile > Notifications.' },
 ];
 
 /** Swipeable intro. Shown once after sign-in, and again from Profile > How it works. */

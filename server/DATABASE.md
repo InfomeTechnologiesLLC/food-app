@@ -34,7 +34,7 @@ Each MongoDB collection is now a table. Each list that used to be nested inside 
 
 | Area | Table | One row is… | Belongs to |
 |---|---|---|---|
-| Accounts | `users` | an app user, including preferences, body, training settings and monthly usage | — |
+| Accounts | `users` | an app user, including preferences, body (height, weight, target, sex, birth year, activity level, goal weeks), training settings and monthly usage | — |
 | | `admin_accounts` | an admin portal login | — |
 | | `admin_sessions` | a signed-in admin (expires after 8 h) | `admin_accounts` |
 | Pantry | `pantry_ingredients` | one ingredient a user has, such as "rice" (unique per user) | `users` |
@@ -56,6 +56,7 @@ Each MongoDB collection is now a table. Each list that used to be nested inside 
 | | `workout_session_sets` | one set (reps, weight, duration, status) | `workout_session_exercises` |
 | Progress | `weight_logs` | one weigh-in per user per day | `users` |
 | | `planned_days` | what was planned on a past day (number of meals, or 1 for a training day), saved when the meal or workout plan that covered it is replaced or deleted, so progress tracking keeps counting it | `users` |
+| | `water_logs` | one drink of water (amount in ml); a day's total is the sum, deleting a row undoes it | `users` |
 
 `__drizzle_migrations` is bookkeeping. It records which schema changes have already been applied, so leave it alone.
 

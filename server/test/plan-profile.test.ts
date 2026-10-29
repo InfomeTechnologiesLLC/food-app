@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 // No real credentials or network calls are used for this prompt regression test.
 process.env.DATABASE_URL = "mysql://localhost/mealmind-test";
-process.env.JWT_SECRET = "mealmind-test-secret";
+process.env.JWT_SECRET = "mealmind-test-secret-at-least-32-characters";
 process.env.GEMINI_API_KEY = "mealmind-test-key";
 const { gemini } = await import("../src/ai/gemini.js");
 const { generatePlan } = await import("../src/ai/plan.js");
@@ -47,4 +47,19 @@ test("recipes that use a unit the pantry can't match are retried once with the p
   assert.equal(prompts.length, 2);
   assert.match(prompts[1]!, /cannot be matched to the pantry: eggs \(recipe used "pcs", pantry has pack\)/);
   assert.equal(plan.days[0]!.meals[0]!.ingredients[0]!.unit, "pack");
+});
+test("daily targets are scaled to the chosen meals and given to the planner", async (t) => {
+  const { mealTargets } = await import("../src/ai/plan.js");
+  const daily = { calories: 2500, proteinGrams: 120, carbsGrams: 300, fatGrams: 70 };
+  assert.deepEqual(mealTargets(daily, ["breakfast", "lunch", "dinner", "snack"]), { share: 1, ...daily });
+  assert.deepEqual(mealTargets(daily, ["lunch", "dinner"]), { share: 0.65, calories: 1630, proteinGrams: 78, carbsGrams: 195, fatGrams: 46 });
+  const requests: any[] = [];
+  t.mock.method(gemini.models, "generateContent", async (request: any) => {
+    requests.push(request);
+    return { text: JSON.stringify({ title: "Targeted plan", days: [{ day: 1, meals: [] }] }) };
+  });
+  const prefs = { diet: "none", allergies: [], goal: "muscle_gain", budget: "medium" };
+  await generatePlan({ days: 1, mealTypes: ["lunch", "dinner"], pantry: [], prefs, maxExtraItems: null, dailyTargets: daily });
+  assert.match(requests[0].contents, /about 1630 kcal, 78 g protein, 195 g carbs and 46 g fat for these meals \(about 65% of the day's food\)/);
+  assert.doesNotMatch(requests[0].contents, /Do not infer health status/);
 });

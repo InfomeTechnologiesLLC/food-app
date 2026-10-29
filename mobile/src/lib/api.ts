@@ -1,4 +1,5 @@
 import * as SecureStore from '@/lib/secure-storage';
+
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 const TOKEN_KEY = 'mealmind.token';
 let token: string | null = null;

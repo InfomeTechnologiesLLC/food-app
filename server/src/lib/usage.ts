@@ -2,8 +2,8 @@ import { userRepo, type Counter, type UserDoc } from "../repos/users.js";
 
 // Monthly limits per plan. Infinity = unlimited.
 export const LIMITS: Record<string, Record<Counter, number>> = {
-  free: { scansThisMonth: 5, plansThisMonth: 3 },
-  plus: { scansThisMonth: Infinity, plansThisMonth: Infinity },
+  free: { scansThisMonth: 5, plansThisMonth: 3, coachThisMonth: 40 },
+  plus: { scansThisMonth: Infinity, plansThisMonth: Infinity, coachThisMonth: Infinity },
 };
 
 export const currentPeriod = () => new Date().toISOString().slice(0, 7); // "2026-10"
@@ -34,11 +34,12 @@ export function toPublicUser(user: Partial<UserDoc>) {
   const limits = LIMITS[u.plan ?? "free"] ?? LIMITS.free!;
   return {
     ...u,
-    usage: stale ? { period: currentPeriod(), scansThisMonth: 0, plansThisMonth: 0 } : u.usage,
+    usage: stale ? { period: currentPeriod(), scansThisMonth: 0, plansThisMonth: 0, coachThisMonth: 0 } : u.usage,
     // null = unlimited (Infinity doesn't survive JSON)
     limits: {
       scansPerMonth: Number.isFinite(limits.scansThisMonth) ? limits.scansThisMonth : null,
       plansPerMonth: Number.isFinite(limits.plansThisMonth) ? limits.plansThisMonth : null,
+      coachPerMonth: Number.isFinite(limits.coachThisMonth) ? limits.coachThisMonth : null,
     },
   };
 }

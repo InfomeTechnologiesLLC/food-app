@@ -30,7 +30,7 @@ export const adminSessionRepo = {
   async create(data: { adminId: string; tokenHash: string; expiresAt: Date }, conn: Conn = getDb()): Promise<AdminSessionDoc> {
     const id = newId();
     await conn.insert(adminSessions).values({ id, ...data });
-    // MySQL has no automatic expiry like MongoDB's TTL index, so expired sessions are cleaned up on login.
+    // MySQL doesn't expire rows by itself, so expired sessions are cleaned up on login.
     await conn.delete(adminSessions).where(lte(adminSessions.expiresAt, new Date()));
     return { _id: id, ...data };
   },

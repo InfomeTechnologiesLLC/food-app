@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
-// 24-character hex ids in the same format MongoDB used (time + random + counter),
-// so ids already stored on phones stay valid and new ids sort by creation time.
+// 24-character hex ids (time + random + counter). Ids already stored on phones keep this
+// format, and new ids sort by creation time.
 const processPart = randomBytes(5).toString("hex");
 let counter = randomBytes(3).readUIntBE(0, 3);
 

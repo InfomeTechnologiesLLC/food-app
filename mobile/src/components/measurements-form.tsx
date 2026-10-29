@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { ProfileInputs, profileDraft } from '@/components/profile-inputs';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Input } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
-import { parseMeasurements } from '@/lib/measurements';
+import { parseMeasurements, parseProfile } from '@/lib/measurements';
 import { useLogWeight } from '@/lib/weight';
 import type { BodyMeasurements } from '@/lib/types';
 
@@ -36,6 +37,7 @@ export function MeasurementsForm({ initial, onSaved }: { initial: BodyMeasuremen
   const [height, setHeight] = useState(initial.heightCm?.toString() ?? '');
    const [weight, setWeight] = useState(initial.weightKg?.toString() ?? '');
   const [target, setTarget] = useState(initial.targetWeightKg?.toString() ?? '');
+  const [profile, setProfile] = useState(() => profileDraft(initial));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
@@ -43,7 +45,7 @@ export function MeasurementsForm({ initial, onSaved }: { initial: BodyMeasuremen
     setError(null);
         try {
       const next = parseMeasurements(height, weight, target);
-      await updateBody(next);
+      await updateBody({ ...next, ...parseProfile(profile) });
       // Keep the weight history in step with the weight shown on the profile
       if (next.weightKg !== null && next.weightKg !== initial.weightKg) await logWeight.mutateAsync({ weightKg: next.weightKg });
       onSaved();
@@ -57,8 +59,9 @@ export function MeasurementsForm({ initial, onSaved }: { initial: BodyMeasuremen
         <>
       <ThemedText type="small" themeColor="textSecondary">Keep your weight up to date. Height and target can be edited anytime. Clear a field to remove it.</ThemedText>
       <MeasurementInputs height={height} weight={weight} target={target} onHeightChange={setHeight} onWeightChange={setWeight} onTargetChange={setTarget} />
+      <ProfileInputs value={profile} onChange={setProfile} />
       {error && <ThemedText themeColor="danger">{error}</ThemedText>}
-      <Button title="Save measurements" onPress={save} loading={saving} />
+      <Button title="Save details" onPress={save} loading={saving} />
     </>
   );
 }

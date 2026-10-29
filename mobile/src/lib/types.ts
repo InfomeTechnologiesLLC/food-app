@@ -11,11 +11,20 @@ export interface Preferences {
   budget: Budget;
 }
 
+export type Sex = 'male' | 'female';
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
+
 export interface BodyMeasurements {
   heightCm?: number | null;
   weightKg?: number | null;
   weightUpdatedAt?: string | null;
   targetWeightKg?: number | null;
+  /** Used for the daily calorie, macro and water targets */
+  sex?: Sex | null;
+  birthYear?: number | null;
+  activityLevel?: ActivityLevel | null;
+  /** Weeks the user would like to reach the target weight in */
+  goalWeeks?: number | null;
 }
 
 export interface User {
@@ -26,9 +35,9 @@ export interface User {
   preferences: Preferences;
   body: BodyMeasurements;
   training: TrainingPreferences;
-  usage: { scansThisMonth: number; plansThisMonth: number };
+  usage: { scansThisMonth: number; plansThisMonth: number; coachThisMonth?: number };
   /** null = unlimited */
-  limits: { scansPerMonth: number | null; plansPerMonth: number | null };
+  limits: { scansPerMonth: number | null; plansPerMonth: number | null; coachPerMonth?: number | null };
 }
 
 export const CATEGORIES = [
@@ -172,4 +181,86 @@ export interface FoodHistoryPage {
   entries: FoodHistoryEntry[];
   totals: Record<string, NutritionTotals>;
   nextCursor: string | null;
+}
+
+/** GET /me/targets (worked out on the server by lib/targets.ts) */
+export type DailyTargets = {
+  ready: true;
+  age: number; bmr: number; tdee: number;
+  calories: number; proteinGrams: number; carbsGrams: number; fatGrams: number; waterMl: number;
+  /** Calories added or removed by weekly check-ins */
+  adjustmentKcal: number;
+  direction: 'lose' | 'gain' | 'maintain';
+  weeklyRateKg: number;
+  timeline: { weeks: number; requestedWeeks: number | null; adjusted: boolean; explanation: string } | null;
+  warnings: string[];
+  notice: string;
+} | {
+  ready: false;
+  missing: ('sex' | 'birthYear' | 'heightCm' | 'weightKg' | 'activityLevel')[];
+  waterMl: number;
+  notice: string;
+};
+
+/** GET /me/water/:date */
+export interface WaterDay {
+  date: string;
+  totalMl: number;
+  goalMl: number;
+  entries: { _id: string; amountMl: number; recordedAt: string }[];
+}
+
+// ── AI coach (server: routes/coach.ts, routes/food-log.ts) ──
+
+export interface Macros { calories: number; proteinGrams: number; carbsGrams: number; fatGrams: number }
+
+export interface FoodEstimateItem extends Macros { name: string; quantity: number; unit: string }
+export interface FoodEstimate {
+  title: string;
+  items: FoodEstimateItem[];
+  totals: Macros;
+  confidence: 'high' | 'medium' | 'low';
+  note: string;
+}
+
+export interface SuggestedMeal {
+  type: MealType;
+  title: string;
+  description: string;
+  prepMinutes: number;
+  calories: number;
+  nutrition: { proteinGrams: number; carbsGrams: number; fatGrams: number };
+  ingredients: { name: string; quantity: number; unit: string; fromPantry: boolean }[];
+  steps: string[];
+  why: string;
+}
+export interface NextMealResult {
+  status: 'suggested' | 'done_for_today' | 'needs_profile';
+  message: string;
+  mealType: MealType | null;
+  aim: Macros | null;
+  remaining: Macros | null;
+  meal: SuggestedMeal | null;
+  toBuy: { name: string; quantity: number; unit: string }[];
+}
+
+export type CoachAction =
+  | { type: 'meal_suggestion'; result: NextMealResult }
+  | { type: 'confirm_food'; estimate: FoodEstimate; mealType: MealType }
+  | { type: 'reminder'; date: string; time: string; body: string }
+  | { type: 'check_in'; deltaKcal: number; reason: string };
+
+export interface CoachMessage { id: string; role: 'user' | 'coach'; text: string; actions?: CoachAction[]; error?: boolean }
+
+export interface TargetChange { _id: string; date: string; deltaKcal: number; adjustmentAfter: number; reason: string }
+
+export interface CoachToday {
+  date: string;
+  targets: DailyTargets;
+  eaten: Macros;
+  remaining: Macros | null;
+  water: { drankMl: number; goalMl: number; leftMl: number };
+  workout: { title: string | null; rest: boolean; exercises: number; done: boolean } | null;
+  missedWorkoutsThisWeek: number;
+  checkIn: { deltaKcal: number; reason: string } | null;
 }

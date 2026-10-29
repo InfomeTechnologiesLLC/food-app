@@ -20,6 +20,7 @@ export const Colors = {
     warning: '#B26A00',
     border: '#E0E1E6',
     controlBorder: '#8C9098',
+    water: '#1E7FD8',
   },
   dark: {
     text: '#ffffff',
@@ -33,6 +34,7 @@ export const Colors = {
     warning: '#F0A93B',
     border: '#2E3135',
     controlBorder: '#737981',
+    water: '#5AB0F5',
   },
 } as const;
 

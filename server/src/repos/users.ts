@@ -4,15 +4,20 @@ import { users } from "../db/schema.js";
 import { newId } from "../db/ids.js";
 
 type Row = typeof users.$inferSelect;
-export type Counter = "scansThisMonth" | "plansThisMonth";
+export type Counter = "scansThisMonth" | "plansThisMonth" | "coachThisMonth";
 
 /** A user shaped the way the API has always returned it. */
 export interface UserDoc {
   _id: string; email: string; passwordHash: string; plan: "free" | "plus";
   preferences: { diet: string; allergies: string[]; goal: string; budget: string };
-  body: { heightCm: number | null; weightKg: number | null; weightUpdatedAt: Date | null; targetWeightKg: number | null };
+  body: {
+    heightCm: number | null; weightKg: number | null; weightUpdatedAt: Date | null; targetWeightKg: number | null;
+    sex: Row["sex"]; birthYear: number | null; activityLevel: Row["activityLevel"]; goalWeeks: number | null;
+  };
   training: { enabled: boolean; goal: Row["trainingGoal"]; experience: Row["trainingExperience"]; equipment: string[]; weekdays: number[]; sessionMinutes: number; excludedExercises: string[] };
-  usage: { period: string; scansThisMonth: number; plansThisMonth: number };
+  usage: { period: string; scansThisMonth: number; plansThisMonth: number; coachThisMonth: number };
+  /** Weekly check-in state (lib/check-in.ts) */
+  checkIn: { calorieAdjustment: number; lastCheckIn: string | null };
   pushTokens: string[]; scheduleRevision: number; onboarded: boolean;
   createdAt: Date; updatedAt: Date; __v: number;
 }
@@ -21,18 +26,20 @@ export function toUser(row: Row): UserDoc {
   return {
     _id: row.id, email: row.email, passwordHash: row.passwordHash, plan: row.plan,
     preferences: { diet: row.diet, allergies: row.allergies, goal: row.goal, budget: row.budget },
-    body: { heightCm: row.heightCm, weightKg: row.weightKg, weightUpdatedAt: row.weightUpdatedAt, targetWeightKg: row.targetWeightKg },
+    body: { heightCm: row.heightCm, weightKg: row.weightKg, weightUpdatedAt: row.weightUpdatedAt, targetWeightKg: row.targetWeightKg,
+      sex: row.sex, birthYear: row.birthYear, activityLevel: row.activityLevel, goalWeeks: row.goalWeeks },
     training: { enabled: row.trainingEnabled, goal: row.trainingGoal, experience: row.trainingExperience, equipment: row.trainingEquipment,
       weekdays: row.trainingWeekdays, sessionMinutes: row.trainingSessionMinutes, excludedExercises: row.trainingExcludedExercises },
-    usage: { period: row.usagePeriod, scansThisMonth: row.scansThisMonth, plansThisMonth: row.plansThisMonth },
+    usage: { period: row.usagePeriod, scansThisMonth: row.scansThisMonth, plansThisMonth: row.plansThisMonth, coachThisMonth: row.coachThisMonth },
+    checkIn: { calorieAdjustment: row.calorieAdjustment, lastCheckIn: row.lastCheckIn },
     pushTokens: row.pushTokens, scheduleRevision: row.scheduleRevision, onboarded: row.onboarded,
     createdAt: row.createdAt, updatedAt: row.updatedAt, __v: 0,
   };
 }
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
-const counterColumn = { scansThisMonth: users.scansThisMonth, plansThisMonth: users.plansThisMonth } as const;
-const counterKey = { scansThisMonth: "scansThisMonth", plansThisMonth: "plansThisMonth" } as const;
+const counterColumn = { scansThisMonth: users.scansThisMonth, plansThisMonth: users.plansThisMonth, coachThisMonth: users.coachThisMonth } as const;
+const counterKey = { scansThisMonth: "scansThisMonth", plansThisMonth: "plansThisMonth", coachThisMonth: "coachThisMonth" } as const;
 
 export interface UserFilter { plan?: "free" | "plus"; onboarded?: boolean; id?: string; emailContains?: string }
 function where(filter: UserFilter = {}): SQL | undefined {
@@ -93,8 +100,10 @@ export const userRepo = {
   async resetToDefaults(id: string, conn: Conn = getDb()) {
     await conn.update(users).set({
       plan: "free", diet: "none", allergies: [], goal: "balanced", budget: "medium", heightCm: null, weightKg: null, weightUpdatedAt: null, targetWeightKg: null,
+      sex: null, birthYear: null, activityLevel: null, goalWeeks: null,
       trainingEnabled: false, trainingGoal: "general_fitness", trainingExperience: "beginner", trainingEquipment: [], trainingWeekdays: [1, 3, 5],
-      trainingSessionMinutes: 30, trainingExcludedExercises: [], usagePeriod: new Date().toISOString().slice(0, 7), scansThisMonth: 0, plansThisMonth: 0,
+      trainingSessionMinutes: 30, trainingExcludedExercises: [], usagePeriod: new Date().toISOString().slice(0, 7), scansThisMonth: 0, plansThisMonth: 0, coachThisMonth: 0,
+      calorieAdjustment: 0, lastCheckIn: null,
       pushTokens: [], scheduleRevision: 0, onboarded: false,
     }).where(eq(users.id, id));
   },
@@ -115,7 +124,7 @@ export const userRepo = {
 
   // ── monthly usage ──
   async resetUsageIfStale(id: string, period: string, conn: Conn = getDb()) {
-    await conn.update(users).set({ usagePeriod: period, scansThisMonth: 0, plansThisMonth: 0 }).where(and(eq(users.id, id), ne(users.usagePeriod, period)));
+    await conn.update(users).set({ usagePeriod: period, scansThisMonth: 0, plansThisMonth: 0, coachThisMonth: 0 }).where(and(eq(users.id, id), ne(users.usagePeriod, period)));
   },
   /** Atomically adds one to `counter` when it is below `limit` (or always when limit is Infinity). */
   async incrementUsage(id: string, counter: Counter, limit: number, conn: Conn = getDb()) {

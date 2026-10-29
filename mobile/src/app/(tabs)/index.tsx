@@ -1,10 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { type Href, router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BmiCard } from '@/components/bmi-card';
 import { DailyProgressCard } from '@/components/daily-progress-card';
 import { HealthCard } from '@/components/health-card';
+import { TargetsCard } from '@/components/targets-card';
+import { useCoachToday } from '@/lib/coach-api';
+import { WaterCard } from '@/components/water-card';
 import { ExerciseProgressCard } from '@/components/exercise-progress-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
@@ -46,6 +50,9 @@ export default function HomeScreen() {
   const theme = useTheme();
   const date = useCalendarDate();
   const { user } = useAuth();
+  const qc = useQueryClient();
+  // Runs the weekly check-in when it is due (the result shows on the targets card)
+  useCoachToday(date);
   const { data: items = [], isLoading, refetch, isRefetching } = usePantry();
   const { data: plans = [], refetch: refetchPlans, isLoading: plansLoading, error: plansError, isRefetching: plansRefetching } = usePlans();
   const history = useDailyHistory(date);
@@ -60,6 +67,9 @@ export default function HomeScreen() {
     void workouts.refetch();
     void syncWorkouts();
     if (latest) refetchPlan();
+    void qc.invalidateQueries({ queryKey: ['targets'] });
+    void qc.invalidateQueries({ queryKey: ['water'] });
+    void qc.invalidateQueries({ queryKey: ['coach-today'] });
   };
   const scansLeft = remaining(user, 'scans');
   const expiredCount = items.filter((i) => i.expiryDate && daysUntil(i.expiryDate) < 0).length;
@@ -126,7 +136,10 @@ export default function HomeScreen() {
         )}
       </View>
 
-            <HealthCard compact />
+      <TargetsCard date={date} plan={currentPlan} history={history.data?.totals[date]} loading={plansLoading || planLoading || history.isLoading} />
+      <WaterCard date={date} />
+
+      <HealthCard compact />
 
       <View style={[styles.progressCard, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
         <ThemedText style={{ fontSize: 20, fontWeight: 700 }}>Today’s progress</ThemedText>

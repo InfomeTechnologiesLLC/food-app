@@ -25,7 +25,7 @@ export async function pickPhoto(source: PickSource) {
 }
 
 /** Downscales to MAX_SIDE and re-encodes as JPEG so uploads stay small (~200–400 KB). */
-async function compress(asset: ImagePicker.ImagePickerAsset) {
+export async function compress(asset: ImagePicker.ImagePickerAsset) {
   const ctx = ImageManipulator.ImageManipulator.manipulate(asset.uri);
   if (Math.max(asset.width, asset.height) > MAX_SIDE) {
     ctx.resize(asset.width >= asset.height ? { width: MAX_SIDE } : { height: MAX_SIDE });

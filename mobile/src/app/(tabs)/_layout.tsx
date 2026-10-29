@@ -25,6 +25,7 @@ const HEADER_TITLES: Record<string, string> = {
   '/plans': 'Meals',
   '/exercise': 'Exercise',
   '/': 'Today',
+  '/coach': 'Coach',
   '/pantry': 'Pantry',
   '/settings': 'Profile',
 };
@@ -64,6 +65,7 @@ export default function TabsLayout() {
         }}>
         <Tabs.Screen name="index" options={tab('Today', 'home-outline')} />
         <Tabs.Screen name="scan" options={{ href: null }} />
+        <Tabs.Screen name="coach" options={tab('Coach', 'chatbubbles-outline')} />
         <Tabs.Screen name="plans" options={tab('Meals', 'restaurant-outline')} />
         <Tabs.Screen name="exercise" options={tab('Exercise', 'barbell-outline')} />
         <Tabs.Screen name="pantry" options={tab('Pantry', 'basket-outline')} />

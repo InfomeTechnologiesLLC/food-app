@@ -1,4 +1,4 @@
-import { env } from "./env.js";
+import { corsOrigins, env } from "./env.js";
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
 import { connectDb, pingDb } from "./db/client.js";
@@ -13,6 +13,8 @@ import planRoutes from "./routes/plans.js";
 
 import exerciseRoutes from "./routes/exercise.js";
 import historyRoutes from "./routes/history.js";
+import coachRoutes from "./routes/coach.js";
+import foodLogRoutes from "./routes/food-log.js";
 import { ScheduleConflict } from "./lib/schedule.js";
 import adminRoutes from "./routes/admin.js";
 import { dirname, resolve } from "node:path";
@@ -22,7 +24,8 @@ import { mountAdminFrontend } from "./lib/admin-frontend.js";
 const app = express();
 app.set("trust proxy", 1); // behind Render/Railway's proxy, so rate limiting sees real client IPs
 app.disable("x-powered-by");
-app.use(cors());
+// The phone app isn't affected by CORS; this only limits which websites may call the API from a browser.
+app.use(cors({ origin: corsOrigins === true ? true : corsOrigins.length ? corsOrigins : false }));
 app.use("/admin-api", (_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
 app.use(express.json({ limit: "1mb" }));
 app.use("/admin-api", adminRoutes);
@@ -35,6 +38,8 @@ app.use("/scans", scanRoutes);
 app.use("/plans", planRoutes);
 app.use("/food-history", historyRoutes);
 app.use("/exercise", exerciseRoutes);
+app.use("/coach", coachRoutes);
+app.use("/food-log", foodLogRoutes);
 
 const adminDist = resolve(dirname(fileURLToPath(import.meta.url)), "../../admin/dist");
 if (env.NODE_ENV === "production") mountAdminFrontend(app, adminDist);

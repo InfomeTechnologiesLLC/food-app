@@ -15,8 +15,8 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
   } catch {
     return res.status(401).json({ error: "Invalid token" });
   }
-  // A valid token can still point to an account that no longer exists (for example a login
-  // from the old MongoDB database, or after the database was recreated). Answer 401 so the
+  // A valid token can still point to an account that no longer exists (for example after the
+  // account was deleted or the database was recreated). Answer 401 so the
   // app asks the user to sign in again, instead of failing later with a database error.
   if (!(await userRepo.exists(sub))) return res.status(401).json({ error: "Account not found. Please sign in again." });
   req.userId = sub;

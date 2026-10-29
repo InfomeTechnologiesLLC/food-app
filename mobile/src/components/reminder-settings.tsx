@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Pressable, Switch } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 
 import { BottomSheet } from '@/components/bottom-sheet';
 import { ListCard, ListRow, SectionLabel } from '@/components/settings-list';
 import { showAlert } from '@/components/themed-alert';
 import { ThemedText } from '@/components/themed-text';
 import { Button, ChipGroup } from '@/components/ui';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { WATER_INTERVALS } from '@/lib/activity-reminders';
 import { notificationsSupported } from '@/lib/notifications';
 import { ensureNotificationPermission, saveReminderSettings, sendTestReminder, useReminderSettings, type ReminderSettings as ReminderPrefs } from '@/lib/reminders';
 
@@ -22,6 +24,10 @@ const ACTIVITY: Record<Kind, {
   weighIn: { label: 'Weekly weigh-in', icon: 'scale-outline', enabled: 'weighInEnabled', hour: 'weighInHour', hours: [7, 8, 9, 10], every: 'Sundays', blurb: 'A weekly reminder to log your weight, unless you already did this week.' },
 };
 const formatHour = (h: number) => `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`;
+const WATER_STARTS = [6, 7, 8, 9, 10] as const;
+const WATER_ENDS = [18, 19, 20, 21, 22] as const;
+const QUIET_STARTS = [20, 21, 22, 23] as const;
+const QUIET_ENDS = [5, 6, 7, 8, 9] as const;
 
 /** "Notifications" section: an expiry-reminder row with a switch; tapping the row opens time settings. */
 export function ReminderSettings() {
@@ -29,10 +35,12 @@ export function ReminderSettings() {
   const settings = useReminderSettings();
   const [open, setOpen] = useState(false);
   const [timeFor, setTimeFor] = useState<Kind | null>(null);
+  const [waterOpen, setWaterOpen] = useState(false);
+  const [quietOpen, setQuietOpen] = useState(false);
   if (!notificationsSupported || !settings) return null;
 
    
-  const toggle = async (key: 'enabled' | (typeof ACTIVITY)[Kind]['enabled'], on: boolean) => {
+  const toggle = async (key: 'enabled' | 'waterEnabled' | 'quietEnabled' | (typeof ACTIVITY)[Kind]['enabled'], on: boolean) => {
     if (on && !(await ensureNotificationPermission())) {
       return showAlert('Notifications blocked', 'Allow notifications for MealMind in your phone settings to get reminders.');
     }
@@ -73,6 +81,20 @@ export function ReminderSettings() {
         {activityRow('meals')}
         {activityRow('workout')}
         {activityRow('weighIn')}
+        <ListRow
+          icon="water-outline"
+          label="Water reminders"
+          subtitle={settings.waterEnabled ? `Every ${settings.waterIntervalHours} h, ${formatHour(settings.waterStartHour)}–${formatHour(settings.waterEndHour)}` : 'Off'}
+          onPress={settings.waterEnabled ? () => setWaterOpen(true) : undefined}
+          right={<Switch value={settings.waterEnabled} onValueChange={(v) => toggle('waterEnabled', v)} trackColor={{ true: theme.tint, false: theme.backgroundSelected }} thumbColor="#ffffff" />}
+        />
+        <ListRow
+          icon="moon-outline"
+          label="Quiet hours"
+          subtitle={settings.quietEnabled ? `No reminders ${formatHour(settings.quietStart)}–${formatHour(settings.quietEnd)}` : 'Off'}
+          onPress={settings.quietEnabled ? () => setQuietOpen(true) : undefined}
+          right={<Switch value={settings.quietEnabled} onValueChange={(v) => toggle('quietEnabled', v)} trackColor={{ true: theme.tint, false: theme.backgroundSelected }} thumbColor="#ffffff" />}
+        />
       </ListCard>
 
       <BottomSheet
@@ -109,6 +131,32 @@ export function ReminderSettings() {
           />
         )}
         <Button title="Done" onPress={() => setTimeFor(null)} />
+      </BottomSheet>
+
+      <BottomSheet
+        visible={waterOpen}
+        title="Water reminders"
+        subtitle="Spread through your day. They stop once you reach today's water goal, and warn you if you fall behind."
+        onClose={() => setWaterOpen(false)}>
+        <View style={{ gap: Spacing.two }}>
+          <ThemedText type="smallBold">How often</ThemedText>
+          <ChipGroup options={WATER_INTERVALS} value={settings.waterIntervalHours as (typeof WATER_INTERVALS)[number]} onChange={(waterIntervalHours) => saveReminderSettings({ ...settings, waterIntervalHours })} format={(h) => `Every ${h} hours`} />
+          <ThemedText type="smallBold">First reminder</ThemedText>
+          <ChipGroup options={WATER_STARTS} value={settings.waterStartHour as (typeof WATER_STARTS)[number]} onChange={(waterStartHour) => saveReminderSettings({ ...settings, waterStartHour })} format={formatHour} />
+          <ThemedText type="smallBold">Last reminder</ThemedText>
+          <ChipGroup options={WATER_ENDS} value={settings.waterEndHour as (typeof WATER_ENDS)[number]} onChange={(waterEndHour) => saveReminderSettings({ ...settings, waterEndHour })} format={formatHour} />
+        </View>
+        <Button title="Done" onPress={() => setWaterOpen(false)} />
+      </BottomSheet>
+
+      <BottomSheet visible={quietOpen} title="Quiet hours" subtitle="Meal, workout, water and weigh-in reminders stay silent in this time. Reminders you ask the coach for still come." onClose={() => setQuietOpen(false)}>
+        <View style={{ gap: Spacing.two }}>
+          <ThemedText type="smallBold">From</ThemedText>
+          <ChipGroup options={QUIET_STARTS} value={settings.quietStart as (typeof QUIET_STARTS)[number]} onChange={(quietStart) => saveReminderSettings({ ...settings, quietStart })} format={formatHour} />
+          <ThemedText type="smallBold">Until</ThemedText>
+          <ChipGroup options={QUIET_ENDS} value={settings.quietEnd as (typeof QUIET_ENDS)[number]} onChange={(quietEnd) => saveReminderSettings({ ...settings, quietEnd })} format={formatHour} />
+        </View>
+        <Button title="Done" onPress={() => setQuietOpen(false)} />
       </BottomSheet>
     </>
   );

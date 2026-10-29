@@ -1,6 +1,6 @@
-   import * as SecureStore from '@/lib/secure-storage';
+import * as SecureStore from '@/lib/secure-storage';
 import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { Notifications, notificationsSupported } from '@/lib/notifications';
 import { usePantry } from '@/lib/pantry';
@@ -8,12 +8,13 @@ import { planActivityReminders, type ActivityReminder } from '@/lib/activity-rem
 import { daysBetween } from '@/lib/coach';
 import { planReminders } from '@/lib/reminder-schedule';
 import { useCoach } from '@/lib/use-coach';
+import { useWater } from '@/lib/water';
 
 const CHANNEL_ID = 'expiry';
 const SETTINGS_KEY = 'mealmind.reminders';
 const KIND = 'expiry-reminder';
 const ACTIVITY_CHANNEL_ID = 'activity';
-const ACTIVITY_KINDS = ['meal-reminder', 'workout-reminder', 'weigh-in-reminder'];
+const ACTIVITY_KINDS = ['meal-reminder', 'workout-reminder', 'weigh-in-reminder', 'water-reminder', 'missed-workout'];
 
 export interface ReminderSettings {
   /** Pantry expiry digest */
@@ -28,10 +29,21 @@ export interface ReminderSettings {
   /** Weekly weigh-in prompt, on Sundays */
   weighInEnabled: boolean;
   weighInHour: number;
+  /** Water every `waterIntervalHours` from `waterStartHour` to `waterEndHour`, until the day's goal is reached */
+  waterEnabled: boolean;
+  waterStartHour: number;
+  waterEndHour: number;
+  waterIntervalHours: number;
+  /** No meal, workout, water or weigh-in reminders between these hours (e.g. 22 → 7) */
+  quietEnabled: boolean;
+  quietStart: number;
+  quietEnd: number;
 }
 
 const DEFAULT_SETTINGS: ReminderSettings = {
   enabled: true, hour: 9, mealsEnabled: true, mealHour: 19, workoutEnabled: true, workoutHour: 18, weighInEnabled: true, weighInHour: 8,
+  waterEnabled: true, waterStartHour: 8, waterEndHour: 20, waterIntervalHours: 2,
+  quietEnabled: true, quietStart: 22, quietEnd: 7,
 };
 
 // Show reminders even when the app is open
@@ -83,7 +95,7 @@ export async function ensureNotificationPermission() {
       importance: Notifications.AndroidImportance.HIGH,
     });
     await Notifications.setNotificationChannelAsync(ACTIVITY_CHANNEL_ID, {
-      name: 'Meal, workout and weigh-in reminders',
+      name: 'Meal, workout, water and weigh-in reminders',
       importance: Notifications.AndroidImportance.HIGH,
     });
   }
@@ -123,7 +135,7 @@ export async function syncExpiryReminders(items: { name: string; expiryDate?: st
   return reminders.length;
 }
 
-/** Replaces the scheduled meal, workout and weigh-in reminders with `reminders` (which may be empty). */
+/** Replaces the scheduled meal, workout, water and weigh-in reminders with `reminders` (which may be empty). */
 export async function syncActivityReminders(reminders: ActivityReminder[]) {
   const N = Notifications;
   if (!N) return 0;
@@ -143,6 +155,24 @@ export async function syncActivityReminders(reminders: ActivityReminder[]) {
   return reminders.length;
 }
 
+/**
+ * A one-off reminder the coach set in chat ("remind me to work out at 6"). It is not touched by the
+ * daily reminder sync, so it fires even after the app is closed. Returns false when it can't be set.
+ */
+export async function scheduleCoachReminder(date: string, time: string, body: string) {
+  const N = Notifications;
+  if (!N || !(await ensureNotificationPermission())) return false;
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  const at = new Date(y!, m! - 1, d!, hh!, mm!);
+  if (at.getTime() <= Date.now()) return false;
+  await N.scheduleNotificationAsync({
+    content: { title: 'Your MealMind coach', body, data: { kind: 'coach-reminder', url: '/coach' } },
+    trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: at, channelId: ACTIVITY_CHANNEL_ID },
+  });
+  return true;
+}
+
 export async function sendTestReminder() {
     if (!Notifications) throw new Error('Reminders need the installed MealMind app. They are not available in Expo Go.');
   if (!(await ensureNotificationPermission())) throw new Error('Notifications are blocked. Enable them for MealMind in your phone settings.');
@@ -153,7 +183,7 @@ export async function sendTestReminder() {
 }
 
 /**
- * Keeps the meal, workout and weigh-in reminders in sync with what the user has already done today.
+ * Keeps the meal, workout, water and weigh-in reminders in sync with what the user has already done today.
  * Rebuilt whenever that data changes, so finished items stop reminding. Mount once while signed in.
  * A reminder cannot know about meals or workouts logged on another device until this app next opens.
  */
@@ -162,21 +192,42 @@ export function useActivityReminderSync() {
   const { series, progress, loading } = useCoach();
   const { today, food, exercise } = progress;
   const lastWeighIn = series.at(-1)?.date;
+  const water = useWater(today);
 
   // Wait for real data: with nothing loaded yet we would wrongly cancel reminders that are still valid
-  const reminders = settings && !loading && !progress.error ? planActivityReminders({
+  const reminders = settings && !loading && !progress.error && water.data ? planActivityReminders({
     now: new Date(), today,
     meals: { enabled: settings.mealsEnabled, hour: settings.mealHour, planDates: progress.mealPlanDates, eatenToday: food.days[0]?.done ?? 0, plannedToday: food.days[0]?.planned ?? 0 },
-    workout: { enabled: settings.workoutEnabled && exercise.enabled, hour: settings.workoutHour, plannedDates: progress.workoutDates, doneToday: (exercise.days[0]?.done ?? 0) > 0 },
+    workout: {
+      enabled: settings.workoutEnabled && exercise.enabled, hour: settings.workoutHour, plannedDates: progress.workoutDates,
+      doneToday: (exercise.days[0]?.done ?? 0) > 0, missedYesterday: exercise.days[1]?.status === 'missed',
+    },
+    quiet: { enabled: settings.quietEnabled, start: settings.quietStart, end: settings.quietEnd },
     weighIn: { enabled: settings.weighInEnabled, hour: settings.weighInHour, daysSinceLast: lastWeighIn ? daysBetween(lastWeighIn, today) : null },
+    water: {
+      enabled: settings.waterEnabled, startHour: settings.waterStartHour, endHour: settings.waterEndHour,
+      intervalHours: settings.waterIntervalHours, goalMl: water.data.goalMl, drankToday: water.data.totalMl,
+    },
   }) : null;
   const signature = reminders?.map((r) => `${r.kind}|${r.date.getTime()}|${r.body}`).join(';');
+  // Rebuild every time the app comes back to the front too: the phone may have dropped scheduled reminders
+  const opens = useAppOpens();
 
   useEffect(() => {
     if (!notificationsSupported || !reminders) return;
     syncActivityReminders(reminders).catch((e) => console.warn('activity reminder sync failed', e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [signature, opens]);
+}
+
+/** Counts how often the app returned to the foreground. */
+function useAppOpens() {
+  const [opens, setOpens] = useState(0);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') setOpens((n) => n + 1); });
+    return () => sub.remove();
+  }, []);
+  return opens;
 }
 
 /** Keeps reminders in sync with the pantry. Mount once while the user is signed in. */

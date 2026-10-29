@@ -44,6 +44,32 @@ export interface PlanInput {
   trainingContext?: unknown;
   /** Max distinct ingredients the user is willing to buy. 0 = pantry only, null = no limit. */
   maxExtraItems: number | null;
+  /** Daily targets from lib/targets.ts, when the profile is complete. */
+  dailyTargets?: { calories: number; proteinGrams: number; carbsGrams: number; fatGrams: number } | null;
+}
+
+/** Usual share of the day's food per meal, used to scale the daily targets to the meals in the plan. */
+export const MEAL_SHARE: Record<MealType, number> = { breakfast: 0.25, lunch: 0.35, dinner: 0.3, snack: 0.1 };
+
+/** The part of the daily targets that the chosen meals should cover, rounded. */
+export function mealTargets(daily: NonNullable<PlanInput["dailyTargets"]>, mealTypes: MealType[]) {
+  const share = Math.min(1, Math.round(mealTypes.reduce((n, t) => n + MEAL_SHARE[t], 0) * 100) / 100);
+  return {
+    share,
+    calories: Math.round((daily.calories * share) / 10) * 10,
+    proteinGrams: Math.round(daily.proteinGrams * share),
+    carbsGrams: Math.round(daily.carbsGrams * share),
+    fatGrams: Math.round(daily.fatGrams * share),
+  };
+}
+
+function targetsRule(input: PlanInput) {
+  if (!input.dailyTargets) {
+    return "9. Height and weight, when provided, are context only. Do not infer health status or prescribe a calorie deficit, daily calorie target or target weight from them. Age and activity level are unknown; follow the stated goal with balanced meals and avoid extreme restriction.";
+  }
+  const t = mealTargets(input.dailyTargets, input.mealTypes);
+  const scope = t.share >= 1 ? "the whole day" : `these meals (about ${Math.round(t.share * 100)}% of the day's food)`;
+  return `9. NUTRITION TARGETS (calculated by the app; follow them, do not recalculate): each day's meals together should give about ${t.calories} kcal, ${t.proteinGrams} g protein, ${t.carbsGrams} g carbs and ${t.fatGrams} g fat for ${scope}. Stay within about 10% of the calories and reach at least the protein. Report honest nutrition estimates; never adjust the numbers to look on target.`;
 }
 
 const GOALS: Record<string, string> = {
@@ -62,7 +88,7 @@ function shoppingRule(maxExtraItems: number | null, days: number) {
   return `The user will buy AT MOST ${maxExtraItems} distinct extra ingredient${maxExtraItems === 1 ? "" : "s"} for the whole plan (pantry items and staples don't count). Pick extras that unlock the most meals, and reuse each extra across several meals. Meals that need no extras are welcome.`;
 }
 
-function buildPrompt({ days, mealTypes, pantry, prefs, maxExtraItems, trainingContext }: PlanInput) {
+function buildPrompt({ days, mealTypes, pantry, prefs, maxExtraItems, trainingContext, dailyTargets }: PlanInput) {
   const pantryLines = pantry.length
     ? pantry
         .map((p) => `- ${p.name}: ${p.quantity} ${p.unit}${p.expiresInDays == null ? "" : p.expiresInDays <= 0 ? " (EXPIRES TODAY)" : ` (expires in ${p.expiresInDays}d)`}`)
@@ -91,7 +117,7 @@ RULES:
 6. Realistic home cooking: weekday meals under 40 minutes, simple techniques.
 7. Number the days from 1 to ${days}.
 8. Estimate calories and nutrition from the complete recipe, including cooking oils and all other ingredients. Report kcal, proteinGrams, carbsGrams and fatGrams for the complete single-person serving.
-9. Height and weight, when provided, are context only. Do not infer health status or prescribe a calorie deficit, daily calorie target or target weight from them. Age and activity level are unknown; follow the stated goal with balanced meals and avoid extreme restriction.`;
+${targetsRule({ days, mealTypes, pantry, prefs, maxExtraItems, trainingContext, dailyTargets })}`;
 }
 
 function systemInstruction(allergies: string[]) {

@@ -21,6 +21,7 @@ import { userRepo } from "../repos/users.js";
 import { foodHistoryRepo } from "../repos/food-history.js";
 import { plannedDayRepo } from "../repos/planned-days.js";
 import { mealPlanDays } from "../lib/planned-days.js";
+import { targetsForUser } from "../lib/user-targets.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -63,6 +64,7 @@ router.post("/", async (req: AuthRequest, res) => {
 
     const activeWorkout = await workoutPlanRepo.findActive(req.userId!);
     const trainingContext = activeWorkout ? { goal: user.training.goal, days: activeWorkout.days.map(d => ({ date: d.date, title: d.title, exercises: d.exercises.map(e => ({ exerciseId: e.exerciseId, sets: e.sets, durationSeconds: e.durationSeconds })) })) } : null;
+    const targets = targetsForUser(user);
     const plan = await generatePlan({
       days: parsed.data.days,
       // Keep the requested meal order consistent (breakfast → snack)
@@ -70,6 +72,7 @@ router.post("/", async (req: AuthRequest, res) => {
       maxExtraItems: parsed.data.maxExtraItems,
       prefs: { diet: prefs.diet, allergies: prefs.allergies ?? [], goal: prefs.goal, budget: prefs.budget, heightCm: user.body.heightCm, weightKg: user.body.weightKg },
       trainingContext,
+      dailyTargets: targets.ready ? targets : null,
       pantry: pantry.flatMap((ingredient) => ingredient.batches.map((batch) => ({
         name: ingredient.name, quantity: batch.quantity, unit: batch.unit,
         expiresInDays: batch.expiryDate ? Math.round((batch.expiryDate.getTime() - now) / 86_400_000) : null,

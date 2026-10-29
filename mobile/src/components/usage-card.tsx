@@ -22,7 +22,7 @@ function UsageStat({ label, used, limit }: { label: string; used: number; limit:
   );
 }
 
-/** This month's scan and meal-plan usage as two ring meters. */
+/** This month's scan, meal-plan and AI coach usage as ring meters. */
 export function UsageCard({ user }: { user: User }) {
   const theme = useTheme();
   return (
@@ -30,6 +30,8 @@ export function UsageCard({ user }: { user: User }) {
       <UsageStat label="Scans" used={user.usage.scansThisMonth} limit={user.limits.scansPerMonth} />
       <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
       <UsageStat label="Plans" used={user.usage.plansThisMonth} limit={user.limits.plansPerMonth} />
+      <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: theme.border }} />
+      <UsageStat label="Coach" used={user.usage.coachThisMonth ?? 0} limit={user.limits.coachPerMonth ?? null} />
     </View>
   );
 }
