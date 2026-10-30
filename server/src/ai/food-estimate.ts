@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { gemini, GEMINI_MODEL, withRetry, AIError } from "./gemini.js";
+import { gemini, GEMINI_MODEL, thinking, withRetry, AIError } from "./gemini.js";
 import { geminiSchema } from "./schema.js";
 
 /**
@@ -50,7 +50,7 @@ export async function estimateFood(input: { text?: string; image?: { data: Buffe
   const response = await withRetry(() => gemini.models.generateContent({
     model: GEMINI_MODEL,
     contents: [{ role: "user", parts }],
-    config: { systemInstruction: INSTRUCTIONS, responseMimeType: "application/json", responseJsonSchema, temperature: 0.2 },
+    config: { systemInstruction: INSTRUCTIONS, responseMimeType: "application/json", responseJsonSchema, temperature: 0.2, ...thinking(512) },
   }));
   let parsed;
   try { parsed = estimateSchema.safeParse(JSON.parse(response.text ?? "")); } catch { throw new AIError("The AI returned an unreadable estimate. Please try again."); }

@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, TextInput, type TextInputProp
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { notifyInputFocus } from '@/lib/keyboard';
 
 export function Button({
   title, onPress, variant = 'primary', loading, disabled, icon,
@@ -51,9 +52,11 @@ export function Input({ label, style, onFocus, onBlur, ...props }: TextInputProp
       <TextInput
         accessibilityLabel={label}
         placeholderTextColor={theme.textSecondary}
-        onFocus={event => { setFocused(true); onFocus?.(event); }}
+        onFocus={event => { setFocused(true); notifyInputFocus(); onFocus?.(event); }}
         onBlur={event => { setFocused(false); onBlur?.(event); }}
-        style={[styles.input, { color: theme.text, backgroundColor: theme.background, borderColor: theme.controlBorder }, style, focused && { borderColor: theme.tint, borderWidth: 2 }]}
+        // Multi-line boxes start at the top with room around the text (otherwise it touches the border)
+        textAlignVertical={props.multiline ? 'top' : undefined}
+        style={[styles.input, props.multiline && styles.multiline, { color: theme.text, backgroundColor: theme.background, borderColor: theme.controlBorder }, style, focused && { borderColor: theme.tint, borderWidth: 2 }]}
         {...props}
       />
     </View>
@@ -110,6 +113,7 @@ const styles = StyleSheet.create({
   button: { minHeight: 50, paddingVertical: Spacing.two, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.three },
   buttonContent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   input: { height: 48, borderRadius: 12, paddingHorizontal: Spacing.three, fontSize: 16, borderWidth: 1 },
+  multiline: { height: undefined, minHeight: 96, paddingTop: 12, paddingBottom: 12, lineHeight: 22 },
   chip: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three, borderRadius: 999, borderWidth: 1 },
   chipFill: { flexGrow: 1, alignItems: 'center' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },

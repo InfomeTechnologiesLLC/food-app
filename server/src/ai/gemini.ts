@@ -4,6 +4,15 @@ import { env } from "../env.js";
 export const gemini = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 export const GEMINI_MODEL = env.GEMINI_MODEL;
 
+/**
+ * Limits how long Gemini 2.5 Flash "thinks" before answering. It thinks by default, which adds
+ * several seconds to every call; quick tasks (chat replies, tool routing, swaps) don't need it.
+ * Only applied to 2.5 Flash models; other models keep their own defaults.
+ */
+export function thinking(budget: number) {
+  return /2\.5-flash/.test(GEMINI_MODEL) ? { thinkingConfig: { thinkingBudget: budget } } : {};
+}
+
 export class AIError extends Error {
   constructor(message: string, public status = 502) {
     super(message);

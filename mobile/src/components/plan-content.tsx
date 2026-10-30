@@ -1,12 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { showAlert } from '@/components/themed-alert';
 import { ChangeMealSheet } from '@/components/change-meal-sheet';
 import { MealCard } from '@/components/meal-card';
 import { ThemedText } from '@/components/themed-text';
-import { Button, ChipGroup } from '@/components/ui';
+import { Button, humanize } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/lib/api';
@@ -17,12 +17,16 @@ import {
   useMarkEaten,
   usePurchaseShoppingItem,
 } from '@/lib/plans';
-import type { Meal, MealPlan, Shortage } from '@/lib/types';
+import { MEAL_TYPES, type Meal, type MealPlan, type MealType, type Shortage } from '@/lib/types';
 import { useCalendarDate } from '@/hooks/use-calendar-date';
 import { stockMessage } from '@/lib/stock-message';
 
-/** A day's date, every day, or the shopping list */
-type Tab = string | 'all' | 'shopping';
+/** A day's date, or the whole week */
+type DayTab = string | 'all';
+/** The order of a day: breakfast, lunch, snack, dinner */
+const DAY_ORDER: MealType[] = ['breakfast', 'lunch', 'snack', 'dinner'];
+const weekday = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
+const dayNumber = (date: string) => new Date(`${date}T12:00:00`).getDate();
 
 const shortageLine = (s: Shortage) => `• ${stockMessage(s)}`;
 
@@ -37,16 +41,14 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
   const mealDays = plan.days.filter((day) => day.meals.length > 0);
   const dayTabs = mealDays.map((d) => d.date ?? `day-${d.day}`);
   // Open on today when the plan covers it, otherwise on the first day
-  const [tab, setTab] = useState<Tab>(() => (dayTabs.includes(date) ? date : dayTabs[0] ?? 'all'));
+  const [tab, setTab] = useState<DayTab>(() => (dayTabs.includes(date) ? date : dayTabs[0] ?? 'all'));
+  const [view, setView] = useState<'meals' | 'shopping'>('meals');
+  const [mealType, setMealType] = useState<MealType | 'all'>('all');
   const [changing, setChanging] = useState<Meal | null>(null);
-  const visibleDays = tab === 'all' ? mealDays : mealDays.filter((day) => (day.date ?? `day-${day.day}`) === tab);
-  const tabLabel = (t: Tab) => {
-    if (t === 'all') return 'All days';
-    if (t === 'shopping') return `To buy (${remaining})`;
-    if (t === date) return 'Today';
-    const d = mealDays.find((x) => (x.date ?? `day-${x.day}`) === t);
-    return d?.date ? dateLabel(d.date) : `Day ${d?.day ?? ''}`;
-  };
+  const types = DAY_ORDER.filter((t) => MEAL_TYPES.includes(t) && mealDays.some((d) => d.meals.some((m) => m.type === t)));
+  const visibleDays = (tab === 'all' ? mealDays : mealDays.filter((day) => (day.date ?? `day-${day.day}`) === tab))
+    .map((day) => ({ ...day, meals: (mealType === 'all' ? day.meals : day.meals.filter((m) => m.type === mealType)).slice().sort((a, b) => DAY_ORDER.indexOf(a.type) - DAY_ORDER.indexOf(b.type)) }))
+    .filter((day) => day.meals.length > 0);
 
   const onToggleEaten = (meal: Meal) => {
     const run = (confirm: boolean) => {
@@ -77,23 +79,62 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
 
   return (
     <View style={{ gap: Spacing.three }}>
-      <ChipGroup<Tab>
-        options={[...dayTabs, ...(dayTabs.length > 1 ? ['all'] : []), 'shopping']}
-        value={tab}
-        onChange={setTab}
-        format={tabLabel}
-      />
+      {/* Meals or shopping list */}
+      <View style={[styles.segment, { backgroundColor: theme.backgroundElement }]}>
+        {(['meals', 'shopping'] as const).map((v) => (
+          <Pressable key={v} accessibilityRole="tab" accessibilityState={{ selected: view === v }} onPress={() => setView(v)}
+            style={[styles.segmentItem, view === v && { backgroundColor: theme.background }]}>
+            <Ionicons name={v === 'meals' ? 'restaurant-outline' : 'cart-outline'} size={16} color={view === v ? theme.text : theme.textSecondary} />
+            <ThemedText type="smallBold" themeColor={view === v ? 'text' : 'textSecondary'}>{v === 'meals' ? 'Meals' : `To buy (${remaining})`}</ThemedText>
+          </Pressable>
+        ))}
+      </View>
 
-      {tab !== 'shopping' ? (
+      {view === 'meals' ? (
         <>
+          {/* Days of the plan, then the whole week */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -Spacing.three }} contentContainerStyle={{ gap: Spacing.two, paddingHorizontal: Spacing.three }}>
+            {[...dayTabs, ...(dayTabs.length > 1 ? ['all'] : [])].map((t) => {
+              const selected = tab === t;
+              const d = mealDays.find((x) => (x.date ?? `day-${x.day}`) === t);
+              return (
+                <Pressable key={t} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setTab(t)}
+                  style={[styles.day, { backgroundColor: selected ? theme.tint : theme.backgroundElement }]}>
+                  <ThemedText type="small" style={{ fontSize: 12, color: selected ? theme.tintText : theme.textSecondary }}>
+                    {t === 'all' ? 'All' : t === date ? 'Today' : d?.date ? weekday(d.date) : `Day`}
+                  </ThemedText>
+                  <ThemedText style={{ fontSize: 18, fontWeight: 700, color: selected ? theme.tintText : theme.text }}>
+                    {t === 'all' ? mealDays.length : d?.date ? dayNumber(d.date) : d?.day}
+                  </ThemedText>
+                  <ThemedText type="small" style={{ fontSize: 11, color: selected ? theme.tintText : theme.textSecondary }}>
+                    {t === 'all' ? 'days' : `${d?.meals.filter((m) => m.eaten).length ?? 0}/${d?.meals.length ?? 0}`}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {/* Only one kind of meal, e.g. breakfast */}
+          {types.length > 1 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -Spacing.three }} contentContainerStyle={{ gap: Spacing.two, paddingHorizontal: Spacing.three }}>
+              {(['all', ...types] as const).map((t) => {
+                const selected = mealType === t;
+                return (
+                  <Pressable key={t} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setMealType(t)}
+                    style={[styles.filter, { backgroundColor: selected ? theme.text : 'transparent', borderColor: selected ? theme.text : theme.border }]}>
+                    <ThemedText type="smallBold" style={{ color: selected ? theme.background : theme.text }}>{t === 'all' ? 'All meals' : humanize(t)}</ThemedText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
           {visibleDays.length === 0 && (
-            <ThemedText themeColor="textSecondary">No meals planned for this day.</ThemedText>
+            <ThemedText themeColor="textSecondary">No {mealType === 'all' ? 'meals' : humanize(mealType).toLowerCase()} planned for this day.</ThemedText>
           )}
           {visibleDays.map((d) => {
             const meals = d.meals;
             return (
               <View key={d.day} style={{ gap: Spacing.two }}>
-                <ThemedText type="smallBold">{dayLabel(d.date, d.day)}</ThemedText>
+                {tab === 'all' && <ThemedText type="smallBold">{d.date === date ? 'Today' : dayLabel(d.date, d.day)}</ThemedText>}
                 {meals.map((m) => (
                   <MealCard
                     key={m._id}
@@ -137,3 +178,10 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  segment: { flexDirection: 'row', padding: 4, borderRadius: 14 },
+  segmentItem: { flex: 1, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  day: { width: 58, paddingVertical: Spacing.two, borderRadius: 16, alignItems: 'center', gap: 2 },
+  filter: { height: 34, paddingHorizontal: Spacing.three, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+});

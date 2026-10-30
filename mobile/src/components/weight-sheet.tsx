@@ -10,7 +10,7 @@ import { parseMeasurements } from '@/lib/measurements';
 import { dateLabel } from '@/lib/plans';
 import { useLogWeight, useWeights } from '@/lib/weight';
 
-/** Log today's weight and, optionally, a target weight. Logging again on the same day replaces the earlier value. */
+/** Log today's weight. Logging again on the same day replaces the earlier value. The target weight is set by the coach. */
 export function WeightSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   return (
     <BottomSheet visible={visible} title="Log your weight" subtitle="Weigh in once a week, at the same time of day, for the clearest trend." onClose={onClose}>
@@ -21,11 +21,10 @@ export function WeightSheet({ visible, onClose }: { visible: boolean; onClose: (
 }
 
 function WeightForm({ onDone }: { onDone: () => void }) {
-  const { user, updateBody } = useAuth();
+  const { user } = useAuth();
   const log = useLogWeight();
   const weights = useWeights();
   const [weight, setWeight] = useState(user?.body.weightKg?.toString() ?? '');
-  const [target, setTarget] = useState(user?.body.targetWeightKg?.toString() ?? '');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -34,10 +33,8 @@ function WeightForm({ onDone }: { onDone: () => void }) {
     setError(null);
     try {
       const { weightKg } = parseMeasurements('', weight);
-      const { weightKg: targetWeightKg } = parseMeasurements('', target);
       if (weightKg === null) throw new Error('Enter your weight in kg.');
       await log.mutateAsync({ weightKg });
-      if (targetWeightKg !== (user?.body.targetWeightKg ?? null)) await updateBody({ targetWeightKg });
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -50,7 +47,6 @@ function WeightForm({ onDone }: { onDone: () => void }) {
   return (
     <>
       <Input label="Weight today (kg)" accessibilityLabel="Weight in kilograms" placeholder="e.g. 68.5" keyboardType="decimal-pad" value={weight} onChangeText={setWeight} maxLength={6} />
-      <Input label="Target weight (kg, optional)" accessibilityLabel="Target weight in kilograms" placeholder="e.g. 65" keyboardType="decimal-pad" value={target} onChangeText={setTarget} maxLength={6} />
       {recent.length > 0 && (
         <View style={{ gap: Spacing.one }}>
           <ThemedText type="smallBold">Recent weigh-ins</ThemedText>

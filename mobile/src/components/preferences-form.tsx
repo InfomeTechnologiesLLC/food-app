@@ -28,7 +28,6 @@ export function PreferencesForm({
   const [prefs, setPrefs] = useState(initial);
   const [height, setHeight] = useState(body.heightCm?.toString() ?? "");
     const [weight, setWeight] = useState(body.weightKg?.toString() ?? "");
-  const [target, setTarget] = useState(body.targetWeightKg?.toString() ?? "");
   const [profile, setProfile] = useState(() => profileDraft(body));
   const [customAllergy, setCustomAllergy] = useState('');
   const [saving, setSaving] = useState(false);
@@ -49,7 +48,8 @@ export function PreferencesForm({
     setSaving(true);
     setError(null);
         try {
-      await onSubmit(prefs, { ...parseMeasurements(height, weight, target), ...parseProfile(profile) });
+      // No target weight here: the coach sets a healthy one from height, weight and goal
+      await onSubmit(prefs, { ...parseMeasurements(height, weight), ...parseProfile(profile) });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -98,9 +98,9 @@ export function PreferencesForm({
       </Section>
 
       <Section title="Your body and goal">
-        <ThemedText type="small" themeColor="textSecondary">With these, MealMind works out your daily calories, protein, carbs, fat and water, and plans meals to match. You can skip any of them and add them later in Profile.</ThemedText>
-        <MeasurementInputs height={height} weight={weight} target={target} onHeightChange={setHeight} onWeightChange={setWeight} onTargetChange={setTarget} />
-        <ProfileInputs value={profile} onChange={setProfile} />
+        <ThemedText type="small" themeColor="textSecondary">With these, MealMind works out your daily calories, protein, carbs, fat and water, and plans meals to match. Your coach sets a healthy target weight for your goal from your height and weight. You can skip any of them and add them later in Profile.</ThemedText>
+        <MeasurementInputs height={height} weight={weight} onHeightChange={setHeight} onWeightChange={setWeight} />
+        <ProfileInputs value={profile} onChange={setProfile} showTimeline={false} />
       </Section>
 
       {error && <ThemedText themeColor="danger">{error}</ThemedText>}

@@ -34,3 +34,13 @@ test("quiet hours silence reminders, including across midnight", () => {
   assert.deepEqual(hours({ enabled: true, start: 12, end: 15 }), [6, 8, 10, 16, 18, 20, 22]);
   assert.deepEqual(hours({ enabled: false, start: 22, end: 7 }), [6, 8, 10, 12, 14, 16, 18, 20, 22]);
 });
+
+test("period reminder fires two days before the expected start, once, and not when it has passed", () => {
+  const period = (nextStart: string | null) => planActivityReminders(state({ workout: { enabled: false, hour: 18, plannedDates: [], doneToday: false, missedYesterday: false }, period: { nextStart } }))
+    .filter((r) => r.kind === "period-reminder");
+  const soon = period("2026-11-02");
+  assert.equal(soon.length, 1);
+  assert.equal(soon[0]!.date.getTime(), new Date(2026, 9, 31, 9, 0).getTime());
+  assert.deepEqual(period("2026-10-29"), [], "two days before is already in the past");
+  assert.deepEqual(period(null), []);
+});

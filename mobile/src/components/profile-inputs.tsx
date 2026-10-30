@@ -19,7 +19,8 @@ const SEX_OPTIONS: readonly (Sex | null)[] = ['male', 'female'];
 const ACTIVITY_KEYS: readonly (ActivityOption | null)[] = ACTIVITY_OPTIONS.map(([key]) => key);
 
 /** Sex, birth year, activity level and timeframe: what the app needs to work out daily targets. */
-export function ProfileInputs({ value, onChange }: { value: ProfileDraft; onChange: (next: ProfileDraft) => void }) {
+/** `showTimeline`: also ask how many weeks to reach the target (not during sign-up, where the target is set for the user). */
+export function ProfileInputs({ value, onChange, showTimeline = true }: { value: ProfileDraft; onChange: (next: ProfileDraft) => void; showTimeline?: boolean }) {
   const set = <K extends keyof ProfileDraft>(key: K, v: ProfileDraft[K]) => onChange({ ...value, [key]: v });
   const activity = ACTIVITY_OPTIONS.find(([key]) => key === value.activityLevel);
   return (
@@ -30,8 +31,10 @@ export function ProfileInputs({ value, onChange }: { value: ProfileDraft; onChan
       <ThemedText type="smallBold">Activity level</ThemedText>
       <ChipGroup options={ACTIVITY_KEYS} value={value.activityLevel} onChange={(v) => set('activityLevel', v)} format={(k) => ACTIVITY_OPTIONS.find(([key]) => key === k)?.[1] ?? ''} />
       {activity && <ThemedText type="small" themeColor="textSecondary">{activity[2]}</ThemedText>}
-      <Input label="Reach my target weight in (weeks, optional)" accessibilityLabel="Weeks to reach target weight" placeholder="e.g. 20" keyboardType="number-pad" value={value.goalWeeks} onChangeText={(v) => set('goalWeeks', v)} maxLength={3} />
-      <ThemedText type="small" themeColor="textSecondary">If that would be too fast to be healthy, we will show you a safe timeline instead.</ThemedText>
+      {showTimeline && <>
+        <Input label="Reach my target weight in (weeks, optional)" accessibilityLabel="Weeks to reach target weight" placeholder="e.g. 20" keyboardType="number-pad" value={value.goalWeeks} onChangeText={(v) => set('goalWeeks', v)} maxLength={3} />
+        <ThemedText type="small" themeColor="textSecondary">If that would be too fast to be healthy, we will show you a safe timeline instead.</ThemedText>
+      </>}
     </View>
   );
 }

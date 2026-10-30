@@ -32,7 +32,7 @@ const patchBody = (body: Record<string, unknown>) => invoke('/body', 'patch', { 
 
 test('targets need the full profile, then follow it', async () => {
   let res = await invoke('/targets', 'get');
-  assert.deepEqual({ ready: res.data.ready, missing: res.data.missing, water: res.data.waterMl }, { ready: false, missing: ['sex', 'birthYear', 'heightCm', 'weightKg', 'activityLevel'], water: 2000 });
+  assert.deepEqual({ ready: res.data.ready, missing: res.data.missing, water: res.data.waterMl }, { ready: false, missing: ['sex', 'heightCm', 'weightKg', 'activityLevel'], water: 2000 });
 
   const year = new Date().getUTCFullYear();
   res = await patchBody({ heightCm: 175, weightKg: 66, targetWeightKg: 80, sex: 'male', birthYear: year - 28, activityLevel: 'moderate', goalWeeks: 20 });

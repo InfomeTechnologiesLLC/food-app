@@ -11,7 +11,6 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import type { Tip } from '@/lib/coach';
-import { dateLabel } from '@/lib/plans';
 import { goalProgress, targetDays, targetSummary, useProgress, type DayStatus, type RangeDays } from '@/lib/progress';
 import { useTargets } from '@/lib/targets';
 import { useCoach } from '@/lib/use-coach';
@@ -94,7 +93,7 @@ export default function ProgressScreen() {
           </>
         ) : (
           <ThemedText type="small" themeColor="textSecondary">
-            {w?.current == null ? 'Log your weight to start tracking your goal.' : 'Set a target weight in Profile → Body and goal to see your progress toward it.'}
+            {w?.current == null ? 'Log your weight to start tracking your goal.' : 'Add your height in Profile → Body and goal, and your coach will set a target weight.'}
           </ThemedText>
         )}
         {t && <ThemedText type="small" themeColor="textSecondary">Daily targets: {t.calories} kcal · {t.proteinGrams} g protein · {(t.waterMl / 1000).toFixed(1)} L water</ThemedText>}
@@ -158,7 +157,7 @@ export default function ProgressScreen() {
             const gym = STATUS_ICON[p.exercise.days[i]!.status];
             return (
               <View key={d.date} style={[styles.dayRow, { borderBottomColor: theme.border }]}>
-                <ThemedText type="small" style={{ flex: 1, fontWeight: 600 }}>{d.date === p.today ? 'Today' : dateLabel(d.date)}</ThemedText>
+                <ThemedText type="small" style={{ flex: 1, fontWeight: 600 }}>{d.date === p.today ? 'Today' : new Date(`${d.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</ThemedText>
                 <ThemedText type="small" style={[styles.col, { color: d.calorieHit ? theme.tint : d.hasFood ? theme.text : theme.textSecondary }]}>{d.hasFood ? d.calories : '–'}</ThemedText>
                 <Ionicons name={meal.icon} size={18} color={theme[meal.color]} style={styles.icon} />
                 <Ionicons name={gym.icon} size={18} color={theme[gym.color]} style={styles.icon} />

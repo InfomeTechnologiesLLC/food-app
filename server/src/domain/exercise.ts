@@ -7,7 +7,7 @@ export const trainingSchema = z.object({
   goal: z.enum(['general_fitness', 'strength', 'muscle_gain', 'endurance']),
   experience: z.enum(['beginner', 'intermediate']),
   equipment: z.array(z.enum(EQUIPMENT)).max(4).refine(v => new Set(v).size === v.length),
-  weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(4).refine(v => new Set(v).size === v.length),
+  weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(v => new Set(v).size === v.length),
   sessionMinutes: z.number().int().min(15).max(60),
   excludedExercises: z.array(z.string().max(60)).max(40),
 }).strict();

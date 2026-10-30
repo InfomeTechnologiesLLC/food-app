@@ -39,6 +39,10 @@ export interface User {
   preferences: Preferences;
   body: BodyMeasurements;
   training: TrainingPreferences;
+  /** The user picked their exercise days; the first workout week waits for it */
+  trainingDaysChosen?: boolean;
+  /** Period tracking settings (female profiles that switch it on) */
+  period?: PeriodSettings;
   usage: { scansThisMonth: number; plansThisMonth: number; coachThisMonth?: number };
   /** null = unlimited */
   limits: { scansPerMonth: number | null; plansPerMonth: number | null; coachPerMonth?: number | null };
@@ -252,7 +256,13 @@ export type CoachAction =
   | { type: 'meal_suggestion'; result: NextMealResult }
   | { type: 'confirm_food'; estimate: FoodEstimate; mealType: MealType }
   | { type: 'reminder'; date: string; time: string; body: string }
-  | { type: 'check_in'; deltaKcal: number; reason: string };
+  | { type: 'check_in'; deltaKcal: number; reason: string }
+  /** Something the coach saved (water or today's weight) */
+  | { type: 'logged'; kind: 'water' | 'weight'; text: string }
+  /** A button that opens a part of the app */
+  | { type: 'open'; screen: CoachScreen; label: string };
+
+export type CoachScreen = 'today' | 'meals' | 'exercise' | 'workout_history' | 'pantry' | 'progress' | 'profile';
 
 export interface CoachMessage { id: string; role: 'user' | 'coach'; text: string; actions?: CoachAction[]; error?: boolean }
 
@@ -267,4 +277,13 @@ export interface CoachToday {
   workout: { title: string | null; rest: boolean; exercises: number; done: boolean } | null;
   missedWorkoutsThisWeek: number;
   checkIn: { deltaKcal: number; reason: string } | null;
+}
+
+export interface PeriodSettings {
+  tracking: boolean;
+  /** What the Exercise tab offers on period days */
+  exercise: 'light' | 'rest';
+  comfortFoods: string[];
+  cycleLength: number;
+  periodLength: number;
 }

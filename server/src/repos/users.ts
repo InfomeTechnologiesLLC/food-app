@@ -15,6 +15,9 @@ export interface UserDoc {
     sex: Row["sex"]; birthYear: number | null; activityLevel: Row["activityLevel"]; goalWeeks: number | null;
   };
   training: { enabled: boolean; goal: Row["trainingGoal"]; experience: Row["trainingExperience"]; equipment: string[]; weekdays: number[]; sessionMinutes: number; excludedExercises: string[] };
+  /** The user picked their exercise days (the app asks before planning the first week) */
+  trainingDaysChosen: boolean;
+  period: { tracking: boolean; exercise: Row["periodExercise"]; comfortFoods: string[]; cycleLength: number; periodLength: number };
   usage: { period: string; scansThisMonth: number; plansThisMonth: number; coachThisMonth: number };
   /** Weekly check-in state (lib/check-in.ts) */
   checkIn: { calorieAdjustment: number; lastCheckIn: string | null };
@@ -30,6 +33,9 @@ export function toUser(row: Row): UserDoc {
       sex: row.sex, birthYear: row.birthYear, activityLevel: row.activityLevel, goalWeeks: row.goalWeeks },
     training: { enabled: row.trainingEnabled, goal: row.trainingGoal, experience: row.trainingExperience, equipment: row.trainingEquipment,
       weekdays: row.trainingWeekdays, sessionMinutes: row.trainingSessionMinutes, excludedExercises: row.trainingExcludedExercises },
+    trainingDaysChosen: row.trainingDaysChosen,
+    period: { tracking: row.periodTracking, exercise: row.periodExercise, comfortFoods: Array.isArray(row.periodComfortFoods) ? row.periodComfortFoods : [],
+      cycleLength: row.cycleLength, periodLength: row.periodLength },
     usage: { period: row.usagePeriod, scansThisMonth: row.scansThisMonth, plansThisMonth: row.plansThisMonth, coachThisMonth: row.coachThisMonth },
     checkIn: { calorieAdjustment: row.calorieAdjustment, lastCheckIn: row.lastCheckIn },
     pushTokens: row.pushTokens, scheduleRevision: row.scheduleRevision, onboarded: row.onboarded,
@@ -70,7 +76,7 @@ export const userRepo = {
     const [row] = await conn.select({ id: users.id }).from(users).where(eq(users.id, id)).limit(1);
     return Boolean(row);
   },
-  async create(data: { email: string; passwordHash: string; id?: string } & Partial<Pick<Row, "plan" | "onboarded" | "diet" | "pushTokens">>, conn: Conn = getDb()) {
+  async create(data: { email: string; passwordHash: string; id?: string } & Partial<Pick<Row, "plan" | "onboarded" | "diet" | "pushTokens" | "trainingEnabled">>, conn: Conn = getDb()) {
     const id = data.id ?? newId();
     await conn.insert(users).values({ ...data, id, email: normalizeEmail(data.email) });
     return (await userRepo.findById(id, conn))!;
@@ -79,12 +85,24 @@ export const userRepo = {
     const [result] = await conn.update(users).set({ ...prefs, onboarded: true }).where(eq(users.id, id));
     return result.affectedRows ? userRepo.findById(id, conn) : null;
   },
+  async updatePeriod(id: string, p: Partial<UserDoc["period"]>, conn: Conn = getDb()) {
+    const set: Partial<Row> = {};
+    if (p.tracking !== undefined) set.periodTracking = p.tracking;
+    if (p.exercise !== undefined) set.periodExercise = p.exercise;
+    if (p.comfortFoods !== undefined) set.periodComfortFoods = p.comfortFoods;
+    if (p.cycleLength !== undefined) set.cycleLength = p.cycleLength;
+    if (p.periodLength !== undefined) set.periodLength = p.periodLength;
+    const [result] = await conn.update(users).set({ ...set, updatedAt: new Date() }).where(eq(users.id, id));
+    return result.affectedRows ? userRepo.findById(id, conn) : null;
+  },
   async updateBody(id: string, body: Partial<UserDoc["body"]>, conn: Conn = getDb()) {
     const [result] = await conn.update(users).set({ ...body, updatedAt: new Date() }).where(eq(users.id, id));
     return result.affectedRows ? userRepo.findById(id, conn) : null;
   },
-  async updateTraining(id: string, training: TrainingFields, conn: Conn = getDb()) {
+  /** `daysChosen`: the user saved these settings themselves (so their exercise days are their choice) */
+  async updateTraining(id: string, training: TrainingFields, conn: Conn = getDb(), daysChosen?: boolean) {
     const [result] = await conn.update(users).set({
+      ...(daysChosen === undefined ? {} : { trainingDaysChosen: daysChosen }),
       trainingEnabled: training.enabled, trainingGoal: training.goal, trainingExperience: training.experience, trainingEquipment: training.equipment,
       trainingWeekdays: training.weekdays, trainingSessionMinutes: training.sessionMinutes, trainingExcludedExercises: training.excludedExercises,
     }).where(eq(users.id, id));
@@ -104,6 +122,7 @@ export const userRepo = {
       trainingEnabled: false, trainingGoal: "general_fitness", trainingExperience: "beginner", trainingEquipment: [], trainingWeekdays: [1, 3, 5],
       trainingSessionMinutes: 30, trainingExcludedExercises: [], usagePeriod: new Date().toISOString().slice(0, 7), scansThisMonth: 0, plansThisMonth: 0, coachThisMonth: 0,
       calorieAdjustment: 0, lastCheckIn: null,
+      trainingDaysChosen: false, periodTracking: false, periodExercise: "light", periodComfortFoods: [], cycleLength: 28, periodLength: 5,
       pushTokens: [], scheduleRevision: 0, onboarded: false,
     }).where(eq(users.id, id));
   },

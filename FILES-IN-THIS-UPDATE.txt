@@ -1,0 +1,25 @@
+MealMind update: keyboard fix + coach for everything + speed fix (all changes since the last zip you applied)
+
+Copy each file to the SAME path inside your MealMind folder, replacing the old file.
+1 file is NEW: mobile/src/lib/keyboard.ts
+
+mobile/src/app/(auth)/index.tsx
+mobile/src/app/(tabs)/coach.tsx
+mobile/src/app/_layout.tsx
+mobile/src/components/bottom-sheet.tsx
+mobile/src/components/review-row.tsx
+mobile/src/components/screen.tsx
+mobile/src/components/ui.tsx
+mobile/src/lib/exercise.tsx
+mobile/src/lib/keyboard.ts
+mobile/src/lib/types.ts
+server/src/ai/coach.ts
+server/src/ai/exercise.ts
+server/src/ai/food-estimate.ts
+server/src/ai/gemini.ts
+server/src/lib/coach-data.ts
+server/src/routes/me.ts
+server/test/coach.integration.ts
+
+No new database migration. If you already ran 0005 and 0006 (npm run db:migrate), nothing else to run.
+Then restart the server (npm run dev) and Expo (npx expo start -c).

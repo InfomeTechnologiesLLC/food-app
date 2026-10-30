@@ -15,7 +15,7 @@ function UsageStat({ label, used, limit }: { label: string; used: number; limit:
       <View style={{ alignItems: 'center' }}>
         <ThemedText style={{ fontWeight: 700 }}>{label}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 13 }}>
-          {limit === null ? 'Unlimited' : `${used} of ${limit} used`}
+          {limit === null ? 'Unlimited' : `${used}/${limit} used`}
         </ThemedText>
       </View>
     </View>

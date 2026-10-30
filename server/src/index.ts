@@ -15,6 +15,7 @@ import exerciseRoutes from "./routes/exercise.js";
 import historyRoutes from "./routes/history.js";
 import coachRoutes from "./routes/coach.js";
 import foodLogRoutes from "./routes/food-log.js";
+import periodRoutes from "./routes/period.js";
 import { ScheduleConflict } from "./lib/schedule.js";
 import adminRoutes from "./routes/admin.js";
 import { dirname, resolve } from "node:path";
@@ -40,6 +41,7 @@ app.use("/food-history", historyRoutes);
 app.use("/exercise", exerciseRoutes);
 app.use("/coach", coachRoutes);
 app.use("/food-log", foodLogRoutes);
+app.use("/period", periodRoutes);
 
 const adminDist = resolve(dirname(fileURLToPath(import.meta.url)), "../../admin/dist");
 if (env.NODE_ENV === "production") mountAdminFrontend(app, adminDist);

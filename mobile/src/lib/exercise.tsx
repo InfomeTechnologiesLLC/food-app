@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { randomUUID } from 'expo-crypto';
 import * as Network from 'expo-network';
@@ -17,6 +17,7 @@ interface ExerciseContextValue {
   save: (session: WorkoutSession) => void; resolve: (id: string, choice: 'local' | 'server') => void;
 }
 const Context = createContext<ExerciseContextValue | null>(null);
+const NO_SESSIONS: LocalSession[] = [];
 export function ExerciseProvider({ children }: { children: ReactNode }) {
   const { user, needsSignIn } = useAuth();
   const account = user?._id ?? '';
@@ -24,17 +25,24 @@ export function ExerciseProvider({ children }: { children: ReactNode }) {
   const canSync = useRef(!needsSignIn); canSync.current = !needsSignIn;
   const qc = useQueryClient();
   const [sessionState, setSessionState] = useState<{ account: string; rows: LocalSession[] }>({ account: '', rows: [] });
-  const sessions = sessionState.account === account ? sessionState.rows : [];
+  const sessions = sessionState.account === account ? sessionState.rows : NO_SESSIONS;
   const [syncing, setSyncing] = useState(false);
   const locks = useRef(new Set<string>());
   const records = useCallback(() => readLocal<LocalSession[]>(account, 'sessions') ?? [], [account]);
+  // What was last saved, so an unchanged list is neither written nor re-rendered (the app redraws on every change)
+  const saved = useRef('');
+  /** Saves the sessions on the device and shows them. Returns false when nothing changed. */
   const commit = useCallback((rows: LocalSession[]) => {
     rows = rows.map(row => {
       const session = archiveWorkoutDay(row.session);
       return session === row.session ? row : { ...row, session, pending: true, operationId: randomUUID() };
     });
+    const json = `${account}|${JSON.stringify(rows)}`;
+    if (json === saved.current) return false;
+    saved.current = json;
     writeLocal(account, 'sessions', rows);
     if (currentAccount.current === account) setSessionState({ account, rows });
+    return true;
   }, [account]);
   useEffect(() => { commit(account ? records() : []); }, [account, records, commit]);
   const sync = useCallback(async () => {
@@ -71,8 +79,8 @@ export function ExerciseProvider({ children }: { children: ReactNode }) {
           cursor = page.nextCursor;
         } while (cursor && currentAccount.current === account && canSync.current);
         if (currentAccount.current !== account || !canSync.current) return;
-        commit(reconcileSessions(records(), server, randomUUID));
-        qc.invalidateQueries({ queryKey: ['exercise', account] });
+        // Only refresh history and plans when the server actually had something new
+        if (commit(reconcileSessions(records(), server, randomUUID))) void qc.invalidateQueries({ queryKey: ['exercise', account, 'history'] });
       }
     } catch { /* Offline: keep local sessions and queued writes. */ }
     finally { locks.current.delete(account); if (currentAccount.current === account) setSyncing(false); }
@@ -82,15 +90,21 @@ export function ExerciseProvider({ children }: { children: ReactNode }) {
     void sync();
     const app = AppState.addEventListener('change', s => { if (s === 'active') void sync(); });
     const network = Network.addNetworkStateListener(s => { if (s.isConnected && s.isInternetReachable !== false) void sync(); });
-    const timer = setInterval(() => { if (AppState.currentState === 'active') void sync(); }, 15000);
+    // Changes made on this device are sent right away (see save); this only picks up changes from other devices
+    const timer = setInterval(() => { if (AppState.currentState === 'active') void sync(); }, 60000);
     return () => { app.remove(); network.remove(); clearInterval(timer); };
   }, [account, needsSignIn, sync]);
+  const sendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (sendTimer.current) clearTimeout(sendTimer.current); }, []);
   const save = (session: WorkoutSession) => {
     if (archiveWorkoutDay(session).status === 'finished') { commit(records()); return; }
     const rows = records();
     const old = rows.find(r => r.session._id === session._id);
     const next: LocalSession = { ...old, session: { ...session, revision: old?.session.revision ?? session.revision }, pending: true, operationId: randomUUID(), error: null, conflict: old?.conflict ?? null };
     commit([...rows.filter(r => r.session._id !== session._id), next]);
+    // Send it shortly after the last change, so quick taps (set after set) go in one request
+    if (sendTimer.current) clearTimeout(sendTimer.current);
+    sendTimer.current = setTimeout(() => void sync(), 2000);
   };
   const start = (day: WorkoutDay, library: ExerciseDefinition[], planId: string | null, initialize?: (session: WorkoutSession) => WorkoutSession) => {
     commit(records());
@@ -114,16 +128,27 @@ export function ExerciseProvider({ children }: { children: ReactNode }) {
     }));
     void sync();
   };
-  return <Context.Provider value={{ sessions: account ? sessions : [], start, save, importSession, sync, syncing, resolve }}>{children}</Context.Provider>;
+  // Rebuilt only when the sessions or sync state change, so screens don't redraw for nothing
+  const latest = useRef({ start, save, importSession, resolve });
+  latest.current = { start, save, importSession, resolve };
+  const value = useMemo<ExerciseContextValue>(() => ({
+    sessions: account ? sessions : NO_SESSIONS, sync, syncing,
+    start: (...a) => latest.current.start(...a),
+    save: (...a) => latest.current.save(...a),
+    importSession: (...a) => latest.current.importSession(...a),
+    resolve: (...a) => latest.current.resolve(...a),
+  }), [account, sessions, sync, syncing]);
+  return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export function useExercise() { const value = useContext(Context); if (!value) throw new Error('ExerciseProvider is missing'); return value; }
 export function useExerciseLibrary() {
   const { user } = useAuth(); const id = user?._id ?? '';
-  return useQuery({ queryKey: ['exercise', id, 'library'], enabled: !!id, initialData: () => readLocal<ExerciseDefinition[]>(id, 'library') ?? undefined,
+  // The exercise list is fixed in the app's server, so once is enough
+  return useQuery({ queryKey: ['exercise', id, 'library'], enabled: !!id, staleTime: Infinity, initialDataUpdatedAt: 0, initialData: () => readLocal<ExerciseDefinition[]>(id, 'library') ?? undefined,
     queryFn: async () => { const data = await api<ExerciseDefinition[]>('/exercise/library'); writeLocal(id, 'library', data); return data; } });
 }
 export function useWorkoutPlans() {
   const { user } = useAuth(); const id = user?._id ?? '';
-  return useQuery({ queryKey: ['exercise', id, 'plans'], enabled: !!id, initialData: () => readLocal<WorkoutPlan[]>(id, 'plans') ?? undefined,
+  return useQuery({ queryKey: ['exercise', id, 'plans'], enabled: !!id, initialDataUpdatedAt: 0, initialData: () => readLocal<WorkoutPlan[]>(id, 'plans') ?? undefined,
     queryFn: async () => { const data = await api<WorkoutPlan[]>('/exercise/plans'); writeLocal(id, 'plans', data); return data; } });
 }

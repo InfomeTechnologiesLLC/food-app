@@ -7,6 +7,7 @@ import { BottomSheet } from '@/components/bottom-sheet';
 import { BUDGETS, COMMON_ALLERGIES, DIETS, GOALS, dietLabel } from '@/components/preferences-form';
 import { CuisinePicker, DislikesInput } from '@/components/food-prefs-inputs';
 import { MeasurementsForm } from '@/components/measurements-form';
+import { PeriodSettings } from '@/components/period-settings';
 import { ReminderSettings } from '@/components/reminder-settings';
 import { ListCard, ListRow, SectionLabel } from '@/components/settings-list';
 import { Screen } from '@/components/screen';
@@ -35,10 +36,10 @@ const SHEET_TITLES: Record<Field, string> = {
 /** "alex.smith@x.com" → "Alex" */
 const nameFromEmail = (email: string) => humanize(email.split('@')[0].split(/[._\-+0-9]/)[0] || email.split('@')[0]);
 
-/** "170 cm · 66 kg → 80 kg" */
+/** "66 → 80 kg" (current → target weight), short enough for one line */
 function bodySummary(body: BodyMeasurements) {
-  const weight = body.weightKg ? `${body.weightKg} kg${body.targetWeightKg ? ` → ${body.targetWeightKg} kg` : ''}` : null;
-  return [body.heightCm ? `${body.heightCm} cm` : null, weight].filter(Boolean).join(' · ') || 'Add height and weight';
+  if (!body.weightKg) return body.heightCm ? `${body.heightCm} cm` : 'Add height and weight';
+  return body.targetWeightKg ? `${body.weightKg} → ${body.targetWeightKg} kg` : `${body.weightKg} kg`;
 }
 
 function summarizeAllergies(allergies: string[]) {
@@ -123,6 +124,7 @@ export default function SettingsScreen() {
 
       <SectionLabel>Training</SectionLabel>
       <ListCard><ListRow icon="barbell-outline" label="Exercise preferences" value={user.training.enabled ? humanize(user.training.goal) : 'Optional · Set up exercise'} onPress={() => router.push('/training-settings')} /></ListCard>
+      <PeriodSettings />
       <ReminderSettings />
 
       <ThemeSettings />

@@ -41,6 +41,8 @@ const day = (name: string) => date(name, { mode: "string" });
 
 const SOURCES = ["groceries", "receipt", "manual"] as const;
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
+export const PERIOD_EXERCISE = ["light", "rest"] as const;
+export const PAIN_LEVELS = ["none", "mild", "strong"] as const;
 const TRAINING_GOALS = ["general_fitness", "strength", "muscle_gain", "endurance"] as const;
 
 // ───────────────────────────── Accounts ─────────────────────────────
@@ -79,6 +81,17 @@ export const users = mysqlTable("users", {
   trainingWeekdays: json<number[]>("training_weekdays").notNull().$defaultFn(() => [1, 3, 5]),
   trainingSessionMinutes: int("training_session_minutes").notNull().default(30),
   trainingExcludedExercises: json<string[]>("training_excluded_exercises").notNull().$defaultFn(() => []),
+  /** True once the user picked their exercise days; the first workout week waits for it */
+  trainingDaysChosen: boolean("training_days_chosen").notNull().default(false),
+  // period tracking (female users who switch it on; lib/period.ts)
+  periodTracking: boolean("period_tracking").notNull().default(false),
+  /** What the Exercise tab offers on period days */
+  periodExercise: mysqlEnum("period_exercise", PERIOD_EXERCISE).notNull().default("light"),
+  /** Foods the user finds comforting on period days, shown on those days */
+  periodComfortFoods: json<string[]>("period_comfort_foods").notNull().default(sql`('[]')`).$defaultFn(() => []),
+  /** Used until enough periods are logged to work these out */
+  cycleLength: int("cycle_length").notNull().default(28),
+  periodLength: int("period_length").notNull().default(5),
   // monthly usage counters
   usagePeriod: char("usage_period", { length: 7 }).notNull().$defaultFn(() => new Date().toISOString().slice(0, 7)),
   scansThisMonth: int("scans_this_month").notNull().default(0),
@@ -470,4 +483,28 @@ export const workoutSessionSets = mysqlTable("workout_session_sets", {
 }, (t) => [
   foreignKey({ name: "fk_workout_session_sets_exercise", columns: [t.exerciseRowId], foreignColumns: [workoutSessionExercises.id] }).onDelete("cascade"),
   index("workout_session_sets_exercise_idx").on(t.exerciseRowId),
+]);
+
+/** Logged periods: the start day and, once known, the last day. */
+export const periodLogs = mysqlTable("period_logs", {
+  id: id().primaryKey(),
+  userId: id("user_id").notNull(),
+  startDate: day("start_date").notNull(),
+  endDate: day("end_date"),
+  createdAt: createdAt(),
+}, (t) => [
+  foreignKey({ name: "fk_period_logs_user", columns: [t.userId], foreignColumns: [users.id] }).onDelete("cascade"),
+  uniqueIndex("period_logs_user_start_unique").on(t.userId, t.startDate),
+]);
+
+/** How much pain the user reported on a period day (one answer per day). */
+export const periodCheckins = mysqlTable("period_checkins", {
+  id: id().primaryKey(),
+  userId: id("user_id").notNull(),
+  date: day("date").notNull(),
+  pain: mysqlEnum("pain", PAIN_LEVELS).notNull(),
+  recordedAt: timestamp("recorded_at").notNull().$defaultFn(() => new Date()),
+}, (t) => [
+  foreignKey({ name: "fk_period_checkins_user", columns: [t.userId], foreignColumns: [users.id] }).onDelete("cascade"),
+  uniqueIndex("period_checkins_user_date_unique").on(t.userId, t.date),
 ]);

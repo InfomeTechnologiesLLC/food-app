@@ -25,7 +25,10 @@ export function MeasurementInputs({ height, weight, target, onHeightChange, onWe
       <Input label="Height (cm)" accessibilityLabel="Height in centimetres" placeholder="e.g. 170" keyboardType="decimal-pad" value={height} onChangeText={onHeightChange} maxLength={6} />
            <Input label="Current weight (kg)" accessibilityLabel="Weight in kilograms" placeholder="e.g. 65" keyboardType="decimal-pad" value={weight} onChangeText={onWeightChange} maxLength={6} />
       {target !== undefined && onTargetChange && (
-        <Input label="Target weight (kg, optional)" accessibilityLabel="Target weight in kilograms" placeholder="e.g. 70" keyboardType="decimal-pad" value={target} onChangeText={onTargetChange} maxLength={6} />
+        <>
+          <Input label="Target weight (kg)" accessibilityLabel="Target weight in kilograms" placeholder="Set by your coach" keyboardType="decimal-pad" value={target} onChangeText={onTargetChange} maxLength={6} />
+          <ThemedText type="small" themeColor="textSecondary">Set by your coach from your height, weight and goal. Change it if you like, or clear it to get the coach’s suggestion again.</ThemedText>
+        </>
       )}
     </View>
   );
@@ -57,7 +60,7 @@ export function MeasurementsForm({ initial, onSaved }: { initial: BodyMeasuremen
   };
   return (
         <>
-      <ThemedText type="small" themeColor="textSecondary">Keep your weight up to date. Height and target can be edited anytime. Clear a field to remove it.</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">Keep your weight up to date. Height and target can be edited anytime.</ThemedText>
       <MeasurementInputs height={height} weight={weight} target={target} onHeightChange={setHeight} onWeightChange={setWeight} onTargetChange={setTarget} />
       <ProfileInputs value={profile} onChange={setProfile} />
       {error && <ThemedText themeColor="danger">{error}</ThemedText>}

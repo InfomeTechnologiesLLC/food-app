@@ -7,6 +7,10 @@ import { foodHistoryRepo } from "../repos/food-history.js";
 import { waterRepo } from "../repos/water.js";
 import { weightRepo } from "../repos/weights.js";
 import { workoutPlanRepo, workoutSessionRepo } from "../repos/workouts.js";
+import { mealPlanRepo } from "../repos/meal-plans.js";
+import { periodRepo } from "../repos/period.js";
+import { exerciseById } from "../domain/exercise.js";
+import { GENERAL_COMFORT_FOODS, periodStatus } from "./period.js";
 import { readPantry } from "./pantry.js";
 import { targetsForUser } from "./user-targets.js";
 import { addDays } from "./calendar.js";
@@ -99,10 +103,94 @@ export async function workoutSummary(userId: string, date: string) {
   };
 }
 
-export async function weightSummary(userId: string, date: string) {
+export async function weightSummary(userId: string, date: string, targetWeightKg: number | null = null) {
   const logs = await weightRepo.list(userId, 30);
   const weights = logs.map(({ date: d, weightKg }) => ({ date: d, weightKg }));
-  return { latest: weights[0] ?? null, recent: weights.slice(0, 8), trendKgPerWeek: trendPerWeek(weights, date) };
+  const latest = weights[0] ?? null;
+  const last = weights[0]?.date;
+  return {
+    latest, recent: weights.slice(0, 8), trendKgPerWeek: trendPerWeek(weights, date), targetWeightKg,
+    kgToTarget: latest && targetWeightKg !== null ? Math.round((latest.weightKg - targetWeightKg) * 10) / 10 : null,
+    daysSinceLastWeighIn: last ? Math.round((Date.parse(date) - Date.parse(last)) / 86_400_000) : null,
+  };
+}
+
+/** Saves a weigh-in for `date` (replacing one on the same day) and keeps the profile's current weight in step. */
+export async function logWeight(userId: string, date: string, weightKg: number) {
+  await weightRepo.upsert(userId, date, weightKg);
+  const [latest] = await weightRepo.list(userId, 1);
+  if (latest) await userRepo.updateBody(userId, { weightKg: latest.weightKg, weightUpdatedAt: latest.recordedAt });
+}
+
+const exerciseLine = (e: { exerciseId: string; sets: number | null; repsMin: number | null; repsMax: number | null; durationSeconds: number | null }) => {
+  const name = exerciseById(e.exerciseId)?.name ?? e.exerciseId;
+  const amount = e.durationSeconds ? `${Math.round(e.durationSeconds / 60) || 1} min`
+    : e.repsMin ? `${e.sets ?? 1} × ${e.repsMin}${e.repsMax && e.repsMax !== e.repsMin ? `–${e.repsMax}` : ""}` : `${e.sets ?? 1} sets`;
+  return `${name} ${amount}`;
+};
+
+/** The active workout plan from `date` for 7 days: title, exercises and whether each day is done. */
+export async function workoutWeek(userId: string, date: string) {
+  const [plan, sessions] = await Promise.all([workoutPlanRepo.findActive(userId), workoutSessionRepo.page(userId, { limit: 30 })]);
+  if (!plan) return { hasPlan: false, days: [] };
+  const done = new Set(sessions.filter((s) => completedSets(s) > 0).map((s) => s.date));
+  const end = addDays(date, 6);
+  return {
+    hasPlan: true,
+    days: plan.days.filter((d) => d.date >= addDays(date, -1) && d.date <= end).map((d) => ({
+      date: d.date, title: d.title, rest: d.exercises.length === 0, done: done.has(d.date), exercises: d.exercises.map(exerciseLine),
+    })),
+  };
+}
+
+/** Meals in the active meal plans for `date` and the next `days - 1` days. */
+export async function mealPlanSummary(userId: string, date: string, days = 3) {
+  const plans = await mealPlanRepo.listActive(userId);
+  const end = addDays(date, days - 1);
+  const out = plans.flatMap((p) => p.days).filter((d) => d.date && d.date >= date && d.date <= end)
+    .sort((a, b) => (a.date! < b.date! ? -1 : 1))
+    .map((d) => ({ date: d.date, meals: d.meals.map((m) => ({ type: m.type, title: m.title, calories: m.calories, proteinGrams: Math.round(m.nutrition.proteinGrams), eaten: m.eaten })) }));
+  return { hasPlan: out.length > 0, days: out };
+}
+
+/** Period status for users who track it; `tracking: false` otherwise, so the coach doesn't bring it up. */
+export async function periodSummary(user: UserDoc, date: string) {
+  if (!user.period.tracking || user.body.sex !== "female") return { tracking: false };
+  const logs = await periodRepo.list(user._id);
+  const status = periodStatus(logs, user.period, date);
+  const [checkin] = status.onPeriod ? await periodRepo.pains(user._id, date, date) : [];
+  return {
+    tracking: true,
+    onPeriod: status.onPeriod, dayOfPeriod: status.dayOfPeriod, nextStart: status.nextStart, daysUntilNext: status.daysUntilNext,
+    painToday: checkin?.pain ?? null,
+    exerciseDuringPeriod: user.period.exercise,
+    comfortFoods: user.period.comfortFoods.length ? user.period.comfortFoods : GENERAL_COMFORT_FOODS,
+  };
+}
+
+/** The last 7 days: calories eaten, water drunk and workouts done per day, against the targets. */
+export async function weekSummary(user: UserDoc, date: string) {
+  const from = addDays(date, -6);
+  const targets = targetsFor(user);
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+  const [food, water, sessions] = await Promise.all([
+    foodHistoryRepo.totalsByDate({ userId: user._id, reversed: false }, dates),
+    waterRepo.totals(user._id, from, date),
+    workoutSessionRepo.page(user._id, { limit: 30 }),
+  ]);
+  const days = dates.map((d) => ({
+    date: d,
+    calories: r(food.find((f) => f.date === d)?.calories ?? 0),
+    waterMl: water.find((w) => w.date === d)?.totalMl ?? 0,
+    workoutDone: sessions.some((s) => s.date === d && completedSets(s) > 0),
+  }));
+  return {
+    targets: targets.ready ? { calories: targets.calories, waterMl: targets.waterMl } : { waterMl: targets.waterMl },
+    days,
+    daysWithFoodLogged: days.filter((d) => d.calories > 0).length,
+    daysWaterGoalMet: days.filter((d) => d.waterMl >= targets.waterMl).length,
+    workoutsDone: days.filter((d) => d.workoutDone).length,
+  };
 }
 
 /** Deterministic summary for GET /coach/today. */

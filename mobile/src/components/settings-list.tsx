@@ -53,13 +53,14 @@ export function ListRow({
       <View style={[styles.iconTile, { backgroundColor: iconColor ? `${iconColor}26` : theme.backgroundSelected }]}>
         <Ionicons name={icon} size={20} color={iconColor ?? theme.text} />
       </View>
-      <View style={{ flex: 1 }}>
+      {/* Label and value share the row by their own widths, so short labels leave room for the value */}
+      <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 'auto', minWidth: 90 }}>
         <ThemedText style={{ fontWeight: 700 }}>{label}</ThemedText>
         {subtitle && <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 13, lineHeight: 16 }}>{subtitle}</ThemedText>}
       </View>
       {right ?? (
         <View style={styles.trailing}>
-          {value && <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={{ maxWidth: 140 }}>{value}</ThemedText>}
+          {value && <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={{ flexShrink: 1 }}>{value}</ThemedText>}
           <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
         </View>
       )}
@@ -72,5 +73,6 @@ const styles = StyleSheet.create({
   card: { borderRadius: 20, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, paddingHorizontal: Spacing.three, paddingVertical: 14 },
   iconTile: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  trailing: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  // Never more than ~half the row, so labels stay on one or two lines
+  trailing: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, maxWidth: '55%', flexShrink: 1 },
 });

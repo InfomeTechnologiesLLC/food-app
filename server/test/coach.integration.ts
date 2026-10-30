@@ -7,6 +7,8 @@ import { newId } from '../src/db/ids.js';
 import * as schema from '../src/db/schema.js';
 import { userRepo } from '../src/repos/users.js';
 import { weightRepo } from '../src/repos/weights.js';
+import { workoutPlanRepo } from '../src/repos/workouts.js';
+import { waterRepo } from '../src/repos/water.js';
 import { addStock } from '../src/lib/add-stock.js';
 import { gemini } from '../src/ai/gemini.js';
 import { SYSTEM } from '../src/ai/coach.js';
@@ -140,6 +142,64 @@ test('chat: "I ate…" becomes a draft to confirm, reminders are validated, bad 
   assert.equal(results[2].error, 'Invalid arguments');
   // Nothing was logged: the user has to confirm
   assert.equal((await invoke(coachRouter, '/today', 'get', { query: clock })).data.eaten.calories, 0);
+});
+
+test('chat: the coach covers workouts, water, weight, the week, periods and app buttons', async (t) => {
+  await workoutPlanRepo.create({ userId, title: 'Week', status: 'active', context: {}, days: [
+    { date: today, title: 'Legs', exercises: [{ exerciseId: 'bodyweight-squat', sets: 3, repsMin: 10, repsMax: 12 }] },
+    { date: addDays(today, 1), title: 'Rest', exercises: [] },
+  ] });
+  await waterRepo.add(userId, today, 500);
+  await weightRepo.upsert(userId, addDays(today, -7), 66);
+  const requests = script(t, [
+    call('get_workout_week'),
+    call('log_water', { amountMl: 250 }),
+    call('log_weight', { weightKg: 66.84 }),
+    call('get_week_summary'),
+    call('get_period'),
+    call('open_screen', { screen: 'exercise', label: "Start today's workout" }),
+    { text: 'Legs today: 3 × 10–12 squats. Water and weight saved.' },
+  ]);
+  const res = await invoke(coachRouter, '/chat', 'post', { body: { ...clock, messages: [{ role: 'user', text: 'What is my workout? I drank a glass of water and weigh 66.8 kg.' }] } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.data.toolsUsed, ['get_workout_week', 'log_water', 'log_weight', 'get_week_summary', 'get_period', 'open_screen']);
+  const results = requests.slice(1).map((r: any) => r.contents.at(-1).parts[0].functionResponse.response.result);
+  // The week: today's exercises by name, then a rest day
+  assert.deepEqual(results[0].days.map((d: any) => [d.title, d.rest, d.exercises]), [['Legs', false, ['Bodyweight squat 3 × 10–12']], ['Rest', true, []]]);
+  // Water is saved and counted
+  assert.equal(results[1].drankMl, 750);
+  assert.equal((await waterRepo.day(userId, today)).totalMl, 750);
+  // Weight is saved for today, rounded, and the profile follows it
+  assert.equal(results[2].latest.weightKg, 66.8);
+  assert.equal(results[2].kgToTarget, -13.2);
+  assert.equal((await userRepo.findById(userId))!.body.weightKg, 66.8);
+  // The week summary counts today's water
+  assert.equal(results[3].days.at(-1).waterMl, 750);
+  assert.equal(results[3].days.length, 7);
+  // Periods stay out of it for users who don't track them
+  assert.deepEqual(results[4], { tracking: false });
+  assert.deepEqual(res.data.actions.map((a: any) => a.type), ['logged', 'logged', 'open']);
+  assert.match(res.data.actions[0].text, /250 ml/);
+  assert.deepEqual(res.data.actions[2], { type: 'open', screen: 'exercise', label: "Start today's workout" });
+  assert.match(SYSTEM, /workouts/);
+});
+
+test('chat: period status and the meal plan are read for users who have them', async (t) => {
+  await userRepo.updateBody(userId, { sex: 'female' });
+  await userRepo.updatePeriod(userId, { tracking: true, exercise: 'light' });
+  const { periodRepo } = await import('../src/repos/period.js');
+  await periodRepo.upsert(userId, addDays(today, -1), null);
+  const requests = script(t, [call('get_period'), call('get_meal_plan'), call('log_water', { amountMl: 10 }), { text: 'Day 2: keep it light today.' }]);
+  const res = await invoke(coachRouter, '/chat', 'post', { body: { ...clock, messages: [{ role: 'user', text: 'Should I train today?' }] } });
+  assert.equal(res.status, 200);
+  const results = requests.slice(1).map((r: any) => r.contents.at(-1).parts[0].functionResponse.response.result);
+  assert.equal(results[0].tracking, true);
+  assert.equal(results[0].onPeriod, true);
+  assert.equal(results[0].dayOfPeriod, 2);
+  assert.equal(results[0].exerciseDuringPeriod, 'light');
+  assert.deepEqual(results[1], { hasPlan: false, days: [] });
+  assert.equal(results[2].error, 'Invalid arguments'); // 10 ml is not a drink
+  assert.deepEqual(res.data.actions, []);
 });
 
 test('chat: input is validated and failures are refunded', async (t) => {

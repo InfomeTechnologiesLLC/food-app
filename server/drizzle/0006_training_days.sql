@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `training_days_chosen` boolean DEFAULT false NOT NULL;

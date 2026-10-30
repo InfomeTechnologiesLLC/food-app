@@ -8,6 +8,7 @@ import { useExercise, useWorkoutPlans } from '@/lib/exercise';
 import type { WorkoutSession } from '@/lib/exercise-types';
 import { useFoodHistory } from '@/lib/history';
 import { activePlan, usePlan, usePlans } from '@/lib/plans';
+import { loggedPeriodDays, usePeriod } from '@/lib/period';
 import { exerciseDays, foodDays, lastDates, plannedByDate, summarize, type PlannedDayRow, type RangeDays } from '@/lib/progress-core';
 import type { NutritionTotals } from '@/lib/types';
 
@@ -47,6 +48,7 @@ export function useProgress(range: RangeDays) {
   const merged = new Map(sessionPages.data?.pages.flatMap((p) => p.entries).map((s) => [s._id, s]));
   for (const row of local) merged.set(row.session._id, row.session); // unsynced local sessions win
   const workoutPlans = useWorkoutPlans();
+  const period = usePeriod(today);
   const workoutPlan = workoutPlans.data?.find((p) => p.status === 'active');
 
   // Past days of plans that were replaced or deleted. The active plan ids are part of the key,
@@ -63,7 +65,9 @@ export function useProgress(range: RangeDays) {
   const activeWorkoutDates = workoutPlan?.days.filter((d) => d.exercises.length > 0).map((d) => d.date) ?? [];
   // The active plan wins for its own dates; saved rows only fill days it doesn't cover
   const covered = new Set(workoutPlan?.days.map((d) => d.date));
-  const plannedDates = new Set([...activeWorkoutDates, ...savedWorkouts.filter((d) => !covered.has(d))]);
+  // Period days the user chose to rest on don't count as planned workouts
+  const restDays = period.data?.settings.exercise === 'rest' ? loggedPeriodDays(period.data) : new Set<string>();
+  const plannedDates = new Set([...activeWorkoutDates, ...savedWorkouts.filter((d) => !covered.has(d))].filter((d) => !restDays.has(d)));
   const exercise = exerciseDays(dates, [...merged.values()], plannedDates, today);
 
   return {

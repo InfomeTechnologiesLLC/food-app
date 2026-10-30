@@ -15,7 +15,10 @@ import { dailyProgress } from '@/lib/daily-progress';
 import { dayAdvice, nutrientRows, type Macros, type Tone } from '@/lib/nutrition-coach';
 import { useTargetChanges } from '@/lib/coach-api';
 import { addDaysLocal } from '@/lib/nutrition-coach';
+import { usePeriod } from '@/lib/period';
+import { useProgress } from '@/lib/progress';
 import { useTargets } from '@/lib/targets';
+import { useWater } from '@/lib/water';
 import type { MealPlan, NutritionTotals } from '@/lib/types';
 
 const MISSING_LABEL = { sex: 'sex', birthYear: 'birth year', heightCm: 'height', weightKg: 'weight', activityLevel: 'activity level' } as const;
@@ -24,6 +27,7 @@ const TONE: Record<Tone, { icon: React.ComponentProps<typeof Ionicons>['name']; 
   info: { icon: 'bulb-outline', color: 'tint' },
   warn: { icon: 'alert-circle-outline', color: 'warning' },
 };
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
 const minus = (a: Macros, b: Macros): Macros => ({
   calories: a.calories - b.calories, proteinGrams: a.proteinGrams - b.proteinGrams, carbsGrams: a.carbsGrams - b.carbsGrams, fatGrams: a.fatGrams - b.fatGrams,
 });
@@ -38,6 +42,9 @@ export function TargetsCard({ date, plan, history, loading }: { date: string; pl
   const [showAdvice, setShowAdvice] = useState(false);
   const [logging, setLogging] = useState(false);
   const changes = useTargetChanges();
+  const water = useWater(date);
+  const progress = useProgress(7);
+  const period = usePeriod(date);
   // The latest weekly check-in change, shown for a week
   const recentChange = changes.data?.find((c) => c.date >= addDaysLocal(date, -6));
   if (!user) return null;
@@ -73,8 +80,43 @@ export function TargetsCard({ date, plan, history, loading }: { date: string; pl
       eaten, targets: t, plannedLeft: minus(day.planned, eaten), mealsLeft: day.totalMeals - day.eatenMeals, hour: new Date().getHours(),
     });
     const tone = TONE[advice.tone];
+    // The day's targets as a checklist: each one ticks when reached
+    const workoutDay = progress.exercise.days[0];
+    const periodRest = !!period.data?.settings.tracking && !!period.data.status.onPeriod && period.data.settings.exercise === 'rest';
+    const workout = !progress.exercise.enabled ? { value: 'Off', sub: 'tap to set up', met: null }
+      : !user.trainingDaysChosen ? { value: 'Set up', sub: 'choose your days', met: null }
+      : workoutDay?.done ? { value: 'Done', sub: 'great work', met: true }
+        : periodRest ? { value: 'Rest', sub: 'period day', met: null }
+          : workoutDay?.planned ? { value: 'To do', sub: 'planned today', met: false }
+            : { value: 'Rest', sub: 'rest day', met: null };
+    const waterMet = water.data ? water.data.totalMl >= water.data.goalMl : false;
+    const calorieMet = t.calories > 0 && Math.abs(eaten.calories - t.calories) <= t.calories * 0.1;
+    const checklist: { label: string; icon: IconName; met: boolean | null }[] = [
+      { label: 'Calories', icon: 'flame', met: calorieMet },
+      { label: 'Protein', icon: 'nutrition', met: eaten.proteinGrams >= t.proteinGrams },
+      { label: 'Water', icon: 'water', met: waterMet },
+      { label: 'Meals', icon: 'restaurant', met: day.totalMeals ? day.eatenMeals >= day.totalMeals : null },
+      { label: 'Workout', icon: 'barbell', met: workout.met },
+    ];
+    const counted = checklist.filter((c) => c.met !== null);
+    const done = counted.filter((c) => c.met).length;
     content = (
       <>
+        <View style={{ gap: Spacing.two }}>
+          <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="smallBold">{done} of {counted.length}</ThemedText> targets reached today
+          </ThemedText>
+          <View style={styles.checks}>
+            {checklist.map((c) => (
+              <View key={c.label} style={styles.check} accessibilityLabel={`${c.label}: ${c.met === null ? 'not needed today' : c.met ? 'reached' : 'not yet'}`}>
+                <View style={[styles.checkIcon, { backgroundColor: c.met ? theme.tint : theme.background, borderColor: c.met ? theme.tint : theme.border, opacity: c.met === null ? 0.45 : 1 }]}>
+                  <Ionicons name={c.met ? 'checkmark' : c.icon} size={16} color={c.met ? theme.tintText : theme.textSecondary} />
+                </View>
+                <ThemedText type="small" themeColor={c.met ? 'text' : 'textSecondary'} style={{ fontSize: 11 }}>{c.label}</ThemedText>
+              </View>
+            ))}
+          </View>
+        </View>
         {/* One-line advice; tap for the full sentence */}
         <Pressable accessibilityRole="button" onPress={() => setShowAdvice((v) => !v)} style={[styles.advice, { backgroundColor: theme.backgroundSelected }]}>
           <Ionicons name={tone.icon} size={20} color={theme[tone.color]} />
@@ -90,7 +132,10 @@ export function TargetsCard({ date, plan, history, loading }: { date: string; pl
             const color = over && (row.key === 'calories' || row.key === 'fatGrams') && t.direction !== 'gain' ? theme.warning : theme.tint;
             return (
               <View key={row.key} style={[styles.tile, { backgroundColor: theme.background }]} accessibilityLabel={`${row.label}: ${row.eaten} of ${row.target} ${row.unit}, ${over ? `${-row.left} over` : `${row.left} left`}`}>
-                <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>{row.label}</ThemedText>
+                <View style={styles.rowBetween}>
+                  <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>{row.label}</ThemedText>
+                  {(row.key === 'calories' ? calorieMet : row.key === 'proteinGrams' ? eaten.proteinGrams >= t.proteinGrams : false) && <Ionicons name="checkmark-circle" size={16} color={theme.tint} />}
+                </View>
                 <ThemedText style={styles.tileValue}>{row.eaten}<ThemedText type="small" themeColor="textSecondary"> / {row.target}{row.unit === 'g' ? ' g' : ''}</ThemedText></ThemedText>
                 <View style={[styles.track, { backgroundColor: theme.backgroundSelected }]}>
                   <View style={[styles.fill, { width: `${Math.min(100, row.percent)}%`, backgroundColor: color }]} />
@@ -99,6 +144,22 @@ export function TargetsCard({ date, plan, history, loading }: { date: string; pl
               </View>
             );
           })}
+          <Pressable accessibilityRole="button" onPress={() => router.navigate('/plans')} style={({ pressed }) => [styles.tile, { backgroundColor: theme.background, opacity: pressed ? 0.7 : 1 }]}>
+            <View style={styles.rowBetween}>
+              <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>Meals</ThemedText>
+              <Ionicons name={day.totalMeals && day.eatenMeals >= day.totalMeals ? 'checkmark-circle' : 'restaurant-outline'} size={16} color={theme.tint} />
+            </View>
+            <ThemedText style={styles.tileValue}>{day.eatenMeals}<ThemedText type="small" themeColor="textSecondary"> / {day.totalMeals || '–'}</ThemedText></ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>{day.totalMeals ? 'eaten from your plan' : 'no plan today'}</ThemedText>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => router.navigate('/exercise')} style={({ pressed }) => [styles.tile, { backgroundColor: theme.background, opacity: pressed ? 0.7 : 1 }]}>
+            <View style={styles.rowBetween}>
+              <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>Workout</ThemedText>
+              <Ionicons name={workout.met ? 'checkmark-circle' : 'barbell-outline'} size={16} color={theme.tint} />
+            </View>
+            <ThemedText style={styles.tileValue}>{workout.value}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>{workout.sub}</ThemedText>
+          </Pressable>
         </View>
         <View style={styles.buttons}>
           <View style={{ flex: 1 }}><Button title="Log food" icon="add-circle-outline" variant="secondary" onPress={() => setLogging(true)} /></View>
@@ -164,6 +225,9 @@ const styles = StyleSheet.create({
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: Spacing.two, borderRadius: 999 },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   buttons: { flexDirection: 'row', gap: Spacing.two },
+  checks: { flexDirection: 'row', justifyContent: 'space-between' },
+  check: { alignItems: 'center', gap: 4, flex: 1 },
+  checkIcon: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
 });

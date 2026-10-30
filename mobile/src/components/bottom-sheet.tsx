@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -8,8 +8,13 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { ThemedText } from '@/components/themed-text';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useKeyboardLift, useScrollToFocusedInput } from '@/lib/keyboard';
 
-/** Modal sheet that slides up from the bottom; tap the backdrop or ✕ to dismiss. */
+/**
+ * Modal sheet that slides up from the bottom; tap the backdrop or ✕ to dismiss.
+ * While the keyboard is open the sheet sits on top of it, and its content scrolls so the text box
+ * being typed in stays visible.
+ */
 export function BottomSheet({
   visible, title, subtitle, onClose, children,
 }: {
@@ -25,6 +30,10 @@ export function BottomSheet({
   const [mounted, setMounted] = useState(visible);
   const [layoutReady, setLayoutReady] = useState(false);
   const [ready, setReady] = useState(false);
+  const sheetRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const keyboard = useKeyboardLift(sheetRef);
+  const scroll = useScrollToFocusedInput(scrollRef, keyboard.lift);
   const progress = useSharedValue(0);
   const sheetHeight = useSharedValue(windowHeight);
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
@@ -92,8 +101,9 @@ export function BottomSheet({
         <Animated.View style={[styles.backdrop, backdropStyle]}>
           <Pressable style={styles.container} onPress={onClose} />
         </Animated.View>
-        <KeyboardAvoidingView style={styles.keyboardContainer} pointerEvents="box-none" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={[styles.keyboardContainer, { paddingBottom: keyboard.lift, paddingTop: insets.top + Spacing.three }]} pointerEvents="box-none">
           <Animated.View
+            ref={sheetRef}
             onLayout={(event) => {
               const height = event.nativeEvent.layout.height;
               if (height <= 0) return;
@@ -102,7 +112,7 @@ export function BottomSheet({
             }}
             style={[
               styles.sheet,
-              { backgroundColor: theme.backgroundElement, paddingBottom: Math.max(insets.bottom, Spacing.three) + Spacing.two },
+              { backgroundColor: theme.backgroundElement, paddingBottom: keyboard.open ? Spacing.three : Math.max(insets.bottom, Spacing.three) + Spacing.two },
               sheetStyle,
             ]}>
             <View style={[styles.handle, { backgroundColor: theme.backgroundSelected }]} />
@@ -115,10 +125,15 @@ export function BottomSheet({
                 <Ionicons name="close" size={18} color={theme.text} />
               </Pressable>
             </View>
-            {content?.subtitle && <ThemedText type="small" themeColor="textSecondary">{content.subtitle}</ThemedText>}
-            {content?.children}
+            {/* Tall forms scroll inside the sheet instead of running off the top of the screen */}
+            <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false} scrollEventThrottle={32}
+              onScroll={(e) => scroll.onScroll(e.nativeEvent.contentOffset.y)}>
+              {content?.subtitle && <ThemedText type="small" themeColor="textSecondary">{content.subtitle}</ThemedText>}
+              {content?.children}
+            </ScrollView>
           </Animated.View>
-        </KeyboardAvoidingView>
+        </View>
       </View>
     </Modal>
   );
@@ -130,10 +145,12 @@ const styles = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0,0,0,0.6)' },
   sheet: {
     borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: Spacing.three, paddingTop: Spacing.two,
-    gap: Spacing.three, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center',
+    gap: Spacing.three, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center', flexShrink: 1,
   },
   handle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.two },
+  body: { flexGrow: 0, flexShrink: 1 },
+  bodyContent: { gap: Spacing.three },
   title: { fontSize: 22, lineHeight: 28, fontWeight: 700 },
   close: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
 });

@@ -104,3 +104,13 @@ test("water: about 35 ml/kg, +500 ml when active, 1.5–4 L", () => {
   assert.equal(waterTarget(150, "active"), 4000);
   assert.equal(waterTarget(null, null), 2000);
 });
+
+test("targets are shown without a birth year, using an age of 30 and saying so", () => {
+  const t = ready({ birthYear: null });
+  assert.equal(t.age, 30);
+  assert.equal(t.calories, ready({ birthYear: 1996 }).calories); // same as a 30-year-old in 2026
+  assert.match(t.warnings[0]!, /Add your birth year/);
+  const missing = calculateTargets(input({ birthYear: null, sex: null }));
+  assert.equal(missing.ready, false);
+  assert.deepEqual(missing.ready ? [] : missing.missing, ["sex"]);
+});

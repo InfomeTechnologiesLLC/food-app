@@ -8,7 +8,9 @@ import { isId } from '../db/ids.js';
 import { isDuplicateKey, transaction } from '../db/tx.js';
 import { EXERCISES, exerciseById, trainingSchema, validateWorkout, workoutOutputSchema, sessionPayloadSchema, type WorkoutContext } from '../domain/exercise.js';
 import { calendarToday, dateSchema, timezoneSchema } from '../lib/calendar.js';
-import { generateWorkout } from '../ai/exercise.js';
+import { generateWorkout, replaceExercise } from '../ai/exercise.js';
+import { consumeUsage, refundUsage } from '../lib/usage.js';
+import { devDetail } from './food-log.js';
 import { AIError } from '../ai/gemini.js';
 import { plannedDayRepo } from '../repos/planned-days.js';
 import { targetsForUser } from '../lib/user-targets.js';
@@ -40,6 +42,40 @@ router.post('/plans', async (req: AuthRequest, res) => {
     const plan = await workoutPlanRepo.create({ userId: req.userId!, ...generated, context });
     res.status(201).json(plan);
   } catch (err) { if (err instanceof AIError) return res.status(err.status).json({ error: err.message }); throw err; }
+});
+/**
+ * Swaps one exercise of a planned day for another that follows the user's request ("no push-ups, I prefer walking").
+ * With `remember`, the old exercise is also left out of future plans. Uses one AI coach request.
+ */
+router.post('/plans/:id/change', async (req: AuthRequest, res) => {
+  const body = z.object({ date: dateSchema, index: z.number().int().min(0).max(7), request: z.string().trim().min(2).max(300), remember: z.boolean().default(false), revision: z.number().int().nonnegative() }).strict().safeParse(req.body);
+  if (!body.success || !isId(req.params.id)) return res.status(400).json({ error: 'Say what you would like instead (2–300 characters).' });
+  const userId = req.userId!;
+  const plan = await workoutPlanRepo.findById(req.params.id as string, userId);
+  if (!plan || plan.status !== 'active') return res.status(404).json({ error: 'Plan not found' });
+  if (plan.__v !== body.data.revision) return res.status(409).json({ error: 'Your plan changed. Refresh and try again.' });
+  if (body.data.date < planToday(plan)) return res.status(400).json({ error: 'Past workouts can’t be changed.' });
+  const current = plan.days.find(d => d.date === body.data.date)?.exercises[body.data.index];
+  if (!current) return res.status(404).json({ error: 'That exercise is no longer in your plan. Refresh and try again.' });
+  if (!(await consumeUsage(userId, 'coachThisMonth'))) return res.status(402).json({ error: "You've used all your free AI coach requests this month. Upgrade to Plus for unlimited coaching.", code: 'LIMIT_REACHED' });
+  try {
+    const stored = workoutOutputSchema.safeParse({ title: plan.title ?? 'Workout week', days: plan.days.map(d => ({ date: d.date, title: d.title ?? 'Workout', explanation: d.explanation || 'Workout', exercises: d.exercises.map(({ exerciseId, sets, repsMin, repsMax, durationSeconds, restSeconds }) => ({ exerciseId, sets, repsMin, repsMax, durationSeconds, restSeconds })) })) });
+    if (!stored.success) throw new AIError('This plan can’t be changed. Plan a new week instead.', 409);
+    const result = await replaceExercise({ plan: stored.data, context: plan.context as WorkoutContext, date: body.data.date, index: body.data.index, request: body.data.request });
+    const updated = await workoutPlanRepo.updateContent(plan._id, userId, body.data.revision, { title: result.plan.title, days: result.plan.days });
+    if (!updated) { await refundUsage(userId, 'coachThisMonth'); return res.status(409).json({ error: 'Your plan changed. Refresh and try again.' }); }
+    if (body.data.remember) {
+      const user = await userRepo.findById(userId);
+      if (user && !user.training.excludedExercises.includes(current.exerciseId)) {
+        await userRepo.updateTraining(userId, { ...user.training, excludedExercises: [...user.training.excludedExercises, current.exerciseId] });
+      }
+    }
+    res.json({ plan: updated, reason: result.reason });
+  } catch (err) {
+    await refundUsage(userId, 'coachThisMonth');
+    if (err instanceof AIError) return res.status(err.status).json({ error: err.message, ...devDetail(err) });
+    throw err;
+  }
 });
 router.patch('/plans/:id', async (req: AuthRequest, res) => {
   const body = workoutOutputSchema.extend({ revision: z.number().int().nonnegative() }).strict().safeParse(req.body);

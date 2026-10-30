@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { userRepo, type UserDoc } from "../repos/users.js";
 import { waterRepo } from "../repos/water.js";
-import { ACTIVITY_LEVELS, SEXES } from "../lib/targets.js";
+import { ACTIVITY_LEVELS, SEXES, direction, suggestTargetWeight } from "../lib/targets.js";
 import { DIETS } from "../lib/food-prefs.js";
 import { targetsForUser } from "../lib/user-targets.js";
 import { isId } from "../db/ids.js";
@@ -12,6 +12,7 @@ import { toPublicUser } from "../lib/usage.js";
 import { weightRepo } from "../repos/weights.js";
 import { addDays, dateSchema } from "../lib/calendar.js";
 import { plannedDayRepo } from "../repos/planned-days.js";
+import { logWeight } from "../lib/coach-data.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -25,12 +26,25 @@ const preferencesSchema = z.object({
   dislikes: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(30),
 });
 
+const goalDirection = (goal: string) => (goal === "weight_loss" ? "lose" : goal === "muscle_gain" ? "gain" : "maintain");
+/**
+ * The target weight is set automatically: when height and weight are known and there is no target,
+ * or (`force`) when the goal changed and the old target points the other way.
+ */
+export async function withSuggestedTarget(user: UserDoc, force = false) {
+  const { heightCm, weightKg, targetWeightKg } = user.body ?? {};
+  if (!heightCm || !weightKg || !user.preferences) return user;
+  const mismatch = targetWeightKg != null && direction(weightKg, targetWeightKg, user.preferences.goal) !== goalDirection(user.preferences.goal);
+  if (targetWeightKg != null && !(force && mismatch)) return user;
+  return (await userRepo.updateBody(user._id, { targetWeightKg: suggestTargetWeight(heightCm, weightKg, user.preferences.goal) })) ?? user;
+}
+
 router.patch("/preferences", async (req: AuthRequest, res) => {
   const parsed = preferencesSchema.partial().strict().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const user = await userRepo.updatePreferences(req.userId!, parsed.data);
   if (!user) return res.status(401).json({ error: "Account not found" });
-  res.json(toPublicUser(user));
+  res.json(toPublicUser(parsed.data.goal ? await withSuggestedTarget(user, true) : user));
 });
 
 const thisYear = () => new Date().getUTCFullYear();
@@ -52,12 +66,12 @@ router.patch('/body', async (req: AuthRequest, res) => {
   if (parsed.data.weightKg !== undefined) set.weightUpdatedAt = parsed.data.weightKg === null ? null : new Date();
   const user = await userRepo.updateBody(req.userId!, set);
   if (!user) return res.status(401).json({ error: 'Account not found' });
-  res.json(toPublicUser(user));
+  res.json(toPublicUser(await withSuggestedTarget(user)));
 });
 router.patch('/training', async (req: AuthRequest, res) => {
   const parsed = trainingSchema.safeParse(req.body);
   if (!parsed.success || parsed.data.excludedExercises.some(id => !exerciseById(id))) return res.status(400).json({ error: 'Invalid training preferences' });
-  const user = await userRepo.updateTraining(req.userId!, parsed.data);
+  const user = await userRepo.updateTraining(req.userId!, parsed.data, undefined, true);
   if (!user) return res.status(401).json({ error: 'Account not found' });
   res.json(toPublicUser(user));
 });
@@ -66,10 +80,6 @@ router.patch('/training', async (req: AuthRequest, res) => {
 const weightBody = z.object({ weightKg: z.number().min(10).max(500) }).strict();
 /** The client's local date can be a day ahead of the server's UTC date, never more. */
 const notTooFarAhead = (date: string) => date <= addDays(new Date().toISOString().slice(0, 10), 1);
-async function syncCurrentWeight(userId: string) {
-  const [latest] = await weightRepo.list(userId, 1);
-  if (latest) await userRepo.updateBody(userId, { weightKg: latest.weightKg, weightUpdatedAt: latest.recordedAt });
-}
 router.get("/weights", async (req: AuthRequest, res) => {
   const parsed = z.object({ limit: z.coerce.number().int().min(1).max(400).default(120) }).safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: "Invalid weight query" });
@@ -79,8 +89,7 @@ router.put("/weights/:date", async (req: AuthRequest, res) => {
   const date = dateSchema.safeParse(req.params.date);
   const body = weightBody.safeParse(req.body);
   if (!date.success || !notTooFarAhead(date.data) || !body.success) return res.status(400).json({ error: "Invalid weigh-in" });
-  await weightRepo.upsert(req.userId!, date.data, body.data.weightKg);
-  await syncCurrentWeight(req.userId!);
+  await logWeight(req.userId!, date.data, body.data.weightKg);
   res.json({ date: date.data, weightKg: body.data.weightKg });
 });
 
@@ -88,7 +97,7 @@ router.put("/weights/:date", async (req: AuthRequest, res) => {
 router.get("/targets", async (req: AuthRequest, res) => {
   const user = await userRepo.findById(req.userId!);
   if (!user) return res.status(401).json({ error: "Account not found" });
-  res.json(targetsForUser(user));
+  res.json(targetsForUser(await withSuggestedTarget(user)));
 });
 
 // Water: each drink is one row, so the last one can be undone

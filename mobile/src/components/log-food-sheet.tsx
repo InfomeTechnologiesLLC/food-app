@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BottomSheet } from '@/components/bottom-sheet';
@@ -40,6 +41,8 @@ function LogFoodForm({ initial, onDone }: { initial?: { estimate: FoodEstimate; 
   const [draft, setDraft] = useState<FoodEstimate | null>(initial?.estimate ?? null);
   const [mealType, setMealType] = useState<MealType>(initial?.mealType ?? mealTypeForNow());
   const [source, setSource] = useState<'photo' | 'text' | 'coach'>(initial ? 'coach' : 'text');
+  // The photo being estimated, shown above the result so the user can check it matches
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
 
   const limitReached = estimate.error instanceof ApiError && estimate.error.code === 'LIMIT_REACHED';
   const fromText = () => { setSource('text'); estimate.mutate({ text: text.trim() }, { onSuccess: setDraft }); };
@@ -48,6 +51,7 @@ function LogFoodForm({ initial, onDone }: { initial?: { estimate: FoodEstimate; 
     try { photo = await pickPhoto(from); } catch (e) { return showAlert('Permission needed', (e as Error).message); }
     if (!photo) return;
     setSource('photo');
+    setPhotoUri(photo.uri);
     estimate.mutate({ photo, text: text.trim() || undefined }, { onSuccess: setDraft });
   };
   const save = () => {
@@ -67,6 +71,12 @@ function LogFoodForm({ initial, onDone }: { initial?: { estimate: FoodEstimate; 
   if (!draft) {
     return (
       <View style={{ gap: Spacing.three }}>
+        {estimate.isPending && photoUri && (
+          <View style={[styles.photoWrap, { backgroundColor: theme.backgroundSelected }]}>
+            <Image source={{ uri: photoUri }} style={styles.photo} contentFit="cover" />
+            <ThemedText type="small" themeColor="textSecondary">Looking at your plate…</ThemedText>
+          </View>
+        )}
         <Input label="What did you eat?" placeholder="e.g. 2 parathas with curd and a tea" value={text} onChangeText={setText} multiline maxLength={500} />
         <Button title="Estimate calories" icon="sparkles-outline" onPress={fromText} loading={estimate.isPending && source === 'text'} disabled={text.trim().length < 2 || estimate.isPending} />
         <View style={styles.row}>
@@ -81,14 +91,22 @@ function LogFoodForm({ initial, onDone }: { initial?: { estimate: FoodEstimate; 
 
   return (
     <View style={{ gap: Spacing.three }}>
-      <View style={{ gap: 2 }}>
+      {source === 'photo' && photoUri && <Image source={{ uri: photoUri }} style={styles.photo} contentFit="cover" accessibilityLabel="Your photo" />}
+      <View style={[styles.summary, { backgroundColor: theme.background }]}>
         <ThemedText style={{ fontSize: 18, fontWeight: 700 }}>{draft.title}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          About {draft.totals.calories} kcal · {draft.totals.proteinGrams} g protein · {draft.totals.carbsGrams} g carbs · {draft.totals.fatGrams} g fat
-        </ThemedText>
+        <View style={styles.macros}>
+          {([['kcal', draft.totals.calories], ['protein', `${draft.totals.proteinGrams} g`], ['carbs', `${draft.totals.carbsGrams} g`], ['fat', `${draft.totals.fatGrams} g`]] as const).map(([label, value]) => (
+            <View key={label} style={{ alignItems: 'center', flex: 1 }}>
+              <ThemedText style={{ fontWeight: 700 }}>{value}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>{label}</ThemedText>
+            </View>
+          ))}
+        </View>
       </View>
+      <ThemedText type="smallBold">What’s in it</ThemedText>
+      <View style={[styles.list, { backgroundColor: theme.background }]}>
       {draft.items.map((item, i) => (
-        <View key={`${item.name}-${i}`} style={[styles.item, { borderColor: theme.border }]}>
+        <View key={`${item.name}-${i}`} style={[styles.item, { borderColor: theme.border }, i === draft.items.length - 1 && { borderBottomWidth: 0 }]}>
           <View style={{ flex: 1 }}>
             <ThemedText style={{ fontWeight: 600 }}>{item.quantity} {item.unit} {item.name}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">{item.calories} kcal · {item.proteinGrams} g protein</ThemedText>
@@ -98,10 +116,12 @@ function LogFoodForm({ initial, onDone }: { initial?: { estimate: FoodEstimate; 
           </Pressable>
         </View>
       ))}
+      </View>
       {draft.note ? <ThemedText type="small" themeColor="textSecondary">{draft.note}{draft.confidence === 'low' ? ' The estimate is rough, so check the portions.' : ''}</ThemedText> : null}
+      <ThemedText type="smallBold">Which meal was it?</ThemedText>
       <ChipGroup options={MEAL_TYPES} value={mealType} onChange={setMealType} format={humanize} />
       <Button title="Log it" icon="checkmark-outline" onPress={save} loading={log.isPending} disabled={!draft.items.length} />
-      <Pressable accessibilityRole="button" onPress={() => { setDraft(null); estimate.reset(); }} hitSlop={8} style={{ alignSelf: 'center' }}>
+      <Pressable accessibilityRole="button" onPress={() => { setDraft(null); setPhotoUri(null); estimate.reset(); }} hitSlop={8} style={{ alignSelf: 'center' }}>
         <ThemedText type="smallBold" themeColor="tint">Start again</ThemedText>
       </Pressable>
     </View>
@@ -110,5 +130,10 @@ function LogFoodForm({ initial, onDone }: { initial?: { estimate: FoodEstimate; 
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Spacing.two },
-  item: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.two, borderBottomWidth: StyleSheet.hairlineWidth },
+  item: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.three, borderBottomWidth: StyleSheet.hairlineWidth },
+  list: { borderRadius: 14, paddingHorizontal: Spacing.three },
+  summary: { borderRadius: 14, padding: Spacing.three, gap: Spacing.two },
+  macros: { flexDirection: 'row' },
+  photo: { width: '100%', height: 160, borderRadius: 14 },
+  photoWrap: { borderRadius: 14, padding: Spacing.two, gap: Spacing.two, alignItems: 'center' },
 });

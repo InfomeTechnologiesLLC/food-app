@@ -6,6 +6,12 @@ export const LIMITS: Record<string, Record<Counter, number>> = {
   plus: { scansThisMonth: Infinity, plansThisMonth: Infinity, coachThisMonth: Infinity },
 };
 
+/**
+ * Whether the weekly meal plan the app makes automatically uses up a free plan.
+ * Off for now: automatic weekly plans are free. Turn it on to count them against plansThisMonth.
+ */
+export const COUNT_AUTO_PLANS = false;
+
 export const currentPeriod = () => new Date().toISOString().slice(0, 7); // "2026-10"
 
 /**

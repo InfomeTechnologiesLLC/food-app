@@ -18,7 +18,8 @@ function markAllDone(s: WorkoutSession): WorkoutSession {
   }) })) };
 }
 
-export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?: WorkoutDay; planId?: string }) {
+/** `onChangeExercise` lets the coach swap an exercise in the plan; only offered before the workout is started. */
+export function WorkoutTracker({ row, day, planId, onChangeExercise }: { row?: LocalSession; day?: WorkoutDay; planId?: string; onChangeExercise?: (index: number) => void }) {
   const theme = useTheme();
   const { user, needsSignIn } = useAuth();
   const { save, start, resolve } = useExercise();
@@ -31,10 +32,12 @@ export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?:
   const [now, setNow] = useState(() => Date.now());
   const restKey = `rest:${row?.session._id ?? ''}`;
   const [restUntil, setRestUntil] = useState(() => user ? readLocal<number>(user._id, restKey) ?? 0 : 0);
+  // Tick every second only while a rest timer is running; otherwise once a minute (for the end of the day)
+  const resting = restUntil > now;
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => setNow(Date.now()), resting ? 1000 : 60000);
     return () => clearInterval(timer);
-  }, []);
+  }, [resting]);
   const missing = !row && day?.exercises.some(p => !library.data?.some(e => e.id === p.exerciseId));
   // Preview uses the same targets as ExerciseProvider.start, without saving a session.
   const preview: WorkoutSession | undefined = !row && day ? {
@@ -78,7 +81,7 @@ export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?:
   return <View style={styles.container}>
     <View style={[styles.summary, { backgroundColor: theme.backgroundElement }]}>
       <ThemedText type="subtitle">{session.title}</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">{row ? session.date : 'Today'}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">{!row || session.date === workoutDate(session, new Date(now)) ? 'Today' : session.date}</ThemedText>
       {editable && <ThemedText type="small" themeColor="textSecondary">Changes save automatically. Editable until the day ends.</ThemedText>}
       <ThemedText type="smallBold">{missing ? 'Exercise details unavailable' : `${completed} / ${total} sets completed${skipped ? ` · ${skipped} skipped` : ''}`}</ThemedText>
       {editable && !missing && total > 0 && completed + skipped < total && (
@@ -108,7 +111,7 @@ export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?:
       const alternatives = library.data?.filter(x => x.id !== e.exerciseId && x.category === e.definition.category && x.tracking === e.definition.tracking && !user.training.excludedExercises.includes(x.id) && x.equipment.every(eq => user.training.equipment.includes(eq as typeof user.training.equipment[number])) && !session.exercises.some((other, i) => i !== ei && other.exerciseId === x.id));
       return <View key={ei} style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: done ? theme.tint : theme.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={`${e.definition.name}, ${done ? 'done, ' : ''}${open === ei ? 'hide' : 'show'} details`} accessibilityState={{ expanded: open === ei }} onPress={() => { setOpen(open === ei ? null : ei); setEditing(null); }} style={styles.header}>
-          <View style={{ flex: 1, gap: 4 }}><ThemedText type="smallBold">{e.definition.name}{done ? ' · Done' : ''}</ThemedText><ThemedText type="small" themeColor="textSecondary">{e.sets.length} sets · {e.sets.map(s => e.definition.tracking === 'reps' ? `${s.reps ?? '–'} reps` : `${s.durationSeconds ?? '–'}s`).filter((v, i, a) => a.indexOf(v) === i).join(' / ')}</ThemedText></View>
+          <View style={{ flex: 1, gap: 4 }}><ThemedText type="smallBold">{e.definition.name}{done ? ' · Done' : ''}</ThemedText><ThemedText type="small" themeColor="textSecondary">{e.sets.length} {e.sets.length === 1 ? 'set' : 'sets'} · {e.sets.map(s => e.definition.tracking === 'reps' ? `${s.reps ?? '–'} reps` : s.durationSeconds && s.durationSeconds >= 120 ? `${Math.round(s.durationSeconds / 60)} min` : `${s.durationSeconds ?? '–'}s`).filter((v, i, a) => a.indexOf(v) === i).join(' / ')}</ThemedText></View>
           <Ionicons name={open === ei ? 'chevron-up' : 'chevron-down'} size={20} color={theme.textSecondary} />
         </Pressable>
         <View style={styles.sets}>{e.sets.map((s, si) => <Pressable key={si} accessibilityRole="checkbox" accessibilityState={{ checked: s.status === 'completed', disabled: !editable || (s.status !== 'completed' && !isSetUnlocked(e, si)) }} accessibilityLabel={`${e.definition.name}, set ${si + 1}, ${s.status}${s.status !== 'completed' && !isSetUnlocked(e, si) ? ', locked' : ''}, ${e.definition.tracking === 'reps' ? `${s.reps ?? 'no'} reps` : `${s.durationSeconds ?? 'no'} seconds`}`} disabled={!editable || (s.status !== 'completed' && !isSetUnlocked(e, si))} onPress={() => handleToggle(ei, si, Date.now())} style={({ pressed }) => [styles.set, { backgroundColor: s.status === 'completed' ? theme.tint : theme.backgroundSelected, borderColor: s.status === 'skipped' ? theme.warning : theme.border, opacity: s.status !== 'completed' && !isSetUnlocked(e, si) ? 0.4 : pressed ? 0.7 : 1 }]}>
@@ -117,6 +120,7 @@ export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?:
         </Pressable>)}</View>
         {open === ei && <View style={styles.container}>
           {e.definition.instructions.map((instruction, i) => <ThemedText key={i} type="small" themeColor="textSecondary">{i + 1}. {instruction}</ThemedText>)}
+          {!row && onChangeExercise && <Button title="Change this exercise" icon="swap-horizontal" variant="secondary" onPress={() => onChangeExercise(ei)} />}
           {editable && <Button title={editing === ei ? 'Done editing' : 'Edit sets'} icon={editing === ei ? 'checkmark' : 'create-outline'} variant="secondary" onPress={() => setEditing(editing === ei ? null : ei)} />}
           {editing === ei && editable && <ThemedText type="small" themeColor="textSecondary">Changes save automatically.</ThemedText>}
           {e.sets.map((s, si) => <View key={si} style={styles.container}>

@@ -3,9 +3,10 @@ import { type Href, router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { BmiCard } from '@/components/bmi-card';
+import { PeriodCard } from '@/components/period-card';
 import { TargetsCard } from '@/components/targets-card';
 import { useCoachToday } from '@/lib/coach-api';
+import { useAutoMealWeek, useAutoWorkoutWeek } from '@/lib/auto-week';
 import { WaterCard } from '@/components/water-card';
 import { TodayOverview } from '@/components/today-overview';
 import { Screen } from '@/components/screen';
@@ -34,7 +35,7 @@ function StatTile({ value, label, icon, iconColor, href, urgent = false }: {
   return (
     <Pressable
       onPress={() => router.navigate(href)}
-      style={({ pressed }) => [styles.tile, styles.statTile, { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: pressed ? 0.8 : 1 }]}>
+      style={({ pressed }) => [styles.tile, styles.statTile, { backgroundColor: theme.background, opacity: pressed ? 0.8 : 1 }]}>
       <View style={styles.rowBetween}>
         <ThemedText style={[styles.statValue, urgent && { color: theme.danger }]}>{value}</ThemedText>
         <Ionicons name={icon} size={20} color={iconColor} />
@@ -51,6 +52,9 @@ export default function HomeScreen() {
   const qc = useQueryClient();
   // Runs the weekly check-in when it is due (the result shows on the targets card)
   useCoachToday(date);
+  // The coach plans this week's meals and workouts as soon as the app opens
+  useAutoMealWeek();
+  useAutoWorkoutWeek();
   const { data: items = [], isLoading, refetch, isRefetching } = usePantry();
   const { data: plans = [], refetch: refetchPlans, isLoading: plansLoading, isRefetching: plansRefetching } = usePlans();
   const history = useDailyHistory(date);
@@ -77,58 +81,44 @@ export default function HomeScreen() {
 
   return (
     <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching || plansRefetching || planRefetching || history.isRefetching || workouts.isRefetching || workoutsSyncing} onRefresh={refresh} />}>
-      {/* The app is about reaching your targets, so progress comes first and the pantry last */}
+      {/* An overview of the day's targets: goal first, then food and water, the pantry last */}
       <ThemedText type="small" themeColor="textSecondary" style={{ paddingTop: Spacing.two }}>{dateLabel}</ThemedText>
       <TodayOverview />
       <TargetsCard date={date} plan={currentPlan} history={history.data?.totals[date]} loading={plansLoading || planLoading || history.isLoading} />
       <WaterCard date={date} />
 
-      <View style={{ gap: Spacing.one, paddingTop: Spacing.two }}>
-        <ThemedText type="subtitle">
-          {"What’s "}<ThemedText type="subtitle" themeColor="tint">cooking?</ThemedText>
-        </ThemedText>
-      </View>
+      <PeriodCard date={date} />
 
-      <View style={[styles.row, { gap: Spacing.two, alignItems: 'stretch' }]}>
-        <Pressable
-          onPress={() => router.navigate('/pantry')}
-          style={({ pressed }) => [styles.tile, styles.heroTile, { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: pressed ? 0.85 : 1 }]}>
-          <View style={styles.rowBetween}>
-            <ThemedText style={[styles.eyebrow, { color: theme.textSecondary }]}>YOUR PANTRY</ThemedText>
-            <Ionicons name="basket-outline" size={20} color={theme.tint} />
-          </View>
-          <ThemedText style={styles.heroValue}>{isLoading ? '–' : items.length}</ThemedText>
-          <View style={{ gap: Spacing.two }}>
-            <ThemedText type="small" themeColor="textSecondary">{plural(items.length, 'item')} tracked</ThemedText>
-            <Ionicons style={{ alignSelf: 'flex-end' }} name="arrow-forward" size={22} color={theme.tint} />
-          </View>
-        </Pressable>
-
-        <View style={{ flex: 1, gap: Spacing.two }}>
+      {/* Pantry, in the same card style as the others */}
+      <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+        <View style={styles.rowBetween}>
+          <ThemedText style={{ fontSize: 20, fontWeight: 700 }}>Pantry</ThemedText>
+          <Ionicons name="basket-outline" size={20} color={theme.tint} />
+        </View>
+        <View style={[styles.row, { gap: Spacing.two }]}>
+          <StatTile value={isLoading ? '–' : items.length} label={`${plural(items.length, 'item')} at home`} icon="basket-outline" iconColor={theme.tint} href="/pantry" />
           <StatTile
             value={hasExpiredItems ? expiredCount : expiringSoonCount}
-            label={hasExpiredItems ? `${plural(expiredCount, 'Item')} expired` : `${plural(expiringSoonCount, 'Item')} to use soon`}
+            label={hasExpiredItems ? `${plural(expiredCount, 'item')} expired` : 'to use soon'}
             icon={hasExpiredItems ? 'alert-circle-outline' : 'time-outline'}
             iconColor={hasExpiredItems ? theme.danger : theme.warning}
             href="/pantry"
             urgent={hasExpiredItems}
           />
-          <BmiCard />
         </View>
-      </View>
-
-      <View style={{ gap: Spacing.two }}>
         <View style={[styles.row, { gap: Spacing.two }]}>
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.navigate('/scan')}
             style={({ pressed }) => [styles.action, { flex: 1, gap: Spacing.two, backgroundColor: theme.tint, opacity: pressed ? 0.85 : 1 }]}>
             <Ionicons name="scan-outline" size={20} color={theme.tintText} />
-            <ThemedText style={{ color: theme.tintText, fontWeight: 600 }}>Scan groceries or receipt</ThemedText>
+            <ThemedText style={{ color: theme.tintText, fontWeight: 600 }}>Scan groceries</ThemedText>
           </Pressable>
           <Pressable
+            accessibilityRole="button"
             accessibilityLabel="Add item manually"
             onPress={() => router.push('/pantry-item')}
-            style={({ pressed }) => [styles.action, { width: 50, backgroundColor: theme.backgroundElement, opacity: pressed ? 0.8 : 1 }]}>
+            style={({ pressed }) => [styles.action, { width: 50, backgroundColor: theme.background, opacity: pressed ? 0.8 : 1 }]}>
             <Ionicons name="add" size={26} color={theme.text} />
           </Pressable>
         </View>
@@ -144,12 +134,10 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center' },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  tile: { borderRadius: 20, padding: Spacing.three },
-  heroTile: { flex: 1, justifyContent: 'space-between', minHeight: 176, borderWidth: 1 },
-  statTile: { flex: 1, borderWidth: 1, justifyContent: 'space-between', gap: Spacing.two },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  card: { borderRadius: 20, padding: Spacing.three, gap: Spacing.three, borderWidth: 1 },
+  tile: { borderRadius: 14, padding: Spacing.two },
+  statTile: { flex: 1, justifyContent: 'space-between', gap: Spacing.one },
   statValue: { fontSize: 24, lineHeight: 30, fontWeight: 700 },
-  heroValue: { fontSize: 56, lineHeight: 64, fontWeight: 700 },
-  eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: 600, letterSpacing: 1.2 },
   action: { height: 50, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
 });

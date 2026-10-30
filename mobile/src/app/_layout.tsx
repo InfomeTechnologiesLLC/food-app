@@ -15,7 +15,9 @@ import { Notifications } from '@/lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
+// Data stays fresh for a minute, so switching tabs doesn't download everything again (each change
+// in the app refreshes what it affects, and pull-to-refresh always fetches)
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000 } } });
 
 function RootNavigator() {
   const { user, loading } = useAuth();

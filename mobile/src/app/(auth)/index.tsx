@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { Fonts } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
+import { notifyInputFocus, useScrollToFocusedInput } from '@/lib/keyboard';
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
@@ -16,6 +17,9 @@ export default function AuthScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Keeps the email and password boxes above the keyboard
+  const scrollRef = useRef<ScrollView>(null);
+  const keyboard = useScrollToFocusedInput(scrollRef);
 
   const submit = async () => {
     if (busy || !email.trim() || !password) return;
@@ -34,8 +38,10 @@ export default function AuthScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="light" />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <View style={styles.keyboardView}>
+        <ScrollView ref={scrollRef} contentContainerStyle={[styles.content, keyboard.extraBottom ? { paddingBottom: keyboard.extraBottom } : null]}
+          keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} scrollEventThrottle={32}
+          onScroll={(e) => keyboard.onScroll(e.nativeEvent.contentOffset.y)}>
           <AppHeader colorScheme="dark" />
 
           <Text accessibilityRole="header" style={styles.heading}>
@@ -48,6 +54,7 @@ export default function AuthScreen() {
               <View style={styles.inputContainer}>
                 <Ionicons name="mail-outline" size={18} color={palette.muted} />
                 <TextInput
+                  onFocus={notifyInputFocus}
                   accessibilityLabel="Email address"
                   accessibilityLabelledBy="email-label"
                   style={styles.input}
@@ -70,6 +77,7 @@ export default function AuthScreen() {
               <View style={styles.inputContainer}>
                 <Ionicons name="lock-closed-outline" size={18} color={palette.muted} />
                 <TextInput
+                  onFocus={notifyInputFocus}
                   accessibilityLabel="Password"
                   accessibilityLabelledBy="password-label"
                   style={styles.input}
@@ -127,7 +135,7 @@ export default function AuthScreen() {
             </Pressable>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

@@ -21,6 +21,7 @@ export const Colors = {
     border: '#E0E1E6',
     controlBorder: '#8C9098',
     water: '#1E7FD8',
+    period: '#C2416B',
   },
   dark: {
     text: '#ffffff',
@@ -35,6 +36,7 @@ export const Colors = {
     border: '#2E3135',
     controlBorder: '#737981',
     water: '#5AB0F5',
+    period: '#F06A95',
   },
 } as const;
 

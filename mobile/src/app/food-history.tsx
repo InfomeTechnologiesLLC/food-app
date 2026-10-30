@@ -47,7 +47,7 @@ export default function FoodHistoryScreen() {
           <View style={{ gap: Spacing.one, paddingBottom: Spacing.two }}>
             <ThemedText type="smallBold">{new Date(`${section.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              {totals[section.date]?.meals ?? 0} meals · ~{Math.round(totals[section.date]?.calories ?? 0)} kcal · Protein {Math.round(totals[section.date]?.proteinGrams ?? 0)} g · Carbs {Math.round(totals[section.date]?.carbsGrams ?? 0)} g · Fat {Math.round(totals[section.date]?.fatGrams ?? 0)} g
+              {totals[section.date]?.meals ?? 0} {(totals[section.date]?.meals ?? 0) === 1 ? 'meal' : 'meals'} · ~{Math.round(totals[section.date]?.calories ?? 0)} kcal · Protein {Math.round(totals[section.date]?.proteinGrams ?? 0)} g · Carbs {Math.round(totals[section.date]?.carbsGrams ?? 0)} g · Fat {Math.round(totals[section.date]?.fatGrams ?? 0)} g
             </ThemedText>
           </View>
         )}

@@ -1,5 +1,6 @@
 {
   "expo": {
+    "scheme": "mealmind",
     "extra": {
       "eas": {
         "projectId": "00e7ce64-b5eb-44c3-9bcd-69fa34a5afd4"

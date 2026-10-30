@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { notifyInputFocus } from '@/lib/keyboard';
 import type { ReviewItem } from '@/lib/scan';
 
 const EXPIRY_STEPS = [null, 2, 3, 5, 7, 14, 30] as const;
@@ -32,14 +33,14 @@ export function ReviewRow({
         { backgroundColor: theme.backgroundElement, borderColor: item.lowConfidence ? theme.warning : 'transparent' },
       ]}>
       <View style={styles.row}>
-        <TextInput value={item.name} onChangeText={(name) => onChange({ name })} style={[inputStyle, { flex: 1 }]} placeholder="Item name" placeholderTextColor={theme.textSecondary} />
+        <TextInput onFocus={notifyInputFocus} value={item.name} onChangeText={(name) => onChange({ name })} style={[inputStyle, { flex: 1 }]} placeholder="Item name" placeholderTextColor={theme.textSecondary} />
         <Pressable onPress={onRemove} hitSlop={10} accessibilityLabel={`Remove ${item.name}`}>
           <Ionicons name="close-circle" size={24} color={theme.textSecondary} />
         </Pressable>
       </View>
       <View style={styles.row}>
-        <TextInput value={item.quantity} onChangeText={(quantity) => onChange({ quantity })} keyboardType="decimal-pad" style={[inputStyle, { width: 70 }]} />
-        <TextInput value={item.unit} onChangeText={(unit) => onChange({ unit })} autoCapitalize="none" style={[inputStyle, { width: 80 }]} />
+        <TextInput onFocus={notifyInputFocus} value={item.quantity} onChangeText={(quantity) => onChange({ quantity })} keyboardType="decimal-pad" style={[inputStyle, { width: 70 }]} />
+        <TextInput onFocus={notifyInputFocus} value={item.unit} onChangeText={(unit) => onChange({ unit })} autoCapitalize="none" style={[inputStyle, { width: 80 }]} />
         <Pressable onPress={cycleExpiry} style={[styles.pill, { backgroundColor: theme.background }]}>
           <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
           <ThemedText type="small">{item.expiryDays == null ? 'No expiry' : `~${item.expiryDays}d`}</ThemedText>

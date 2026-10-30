@@ -48,6 +48,8 @@ export interface PlanInput {
   maxExtraItems: number | null;
   /** Daily targets from lib/targets.ts, when the profile is complete. */
   dailyTargets?: { calories: number; proteinGrams: number; carbsGrams: number; fatGrams: number } | null;
+  /** Extra guidance for particular days, e.g. expected period days */
+  dayNotes?: string[];
 }
 
 /** Usual share of the day's food per meal, used to scale the daily targets to the meals in the plan. */
@@ -90,7 +92,7 @@ function shoppingRule(maxExtraItems: number | null, days: number) {
   return `The user will buy AT MOST ${maxExtraItems} distinct extra ingredient${maxExtraItems === 1 ? "" : "s"} for the whole plan (pantry items and staples don't count). Pick extras that unlock the most meals, and reuse each extra across several meals. Meals that need no extras are welcome.`;
 }
 
-function buildPrompt({ days, mealTypes, pantry, prefs, maxExtraItems, trainingContext, dailyTargets }: PlanInput) {
+function buildPrompt({ days, mealTypes, pantry, prefs, maxExtraItems, trainingContext, dailyTargets, dayNotes }: PlanInput) {
   const pantryLines = pantry.length
     ? pantry
         .map((p) => `- ${p.name}: ${p.quantity} ${p.unit}${p.expiresInDays == null ? "" : p.expiresInDays <= 0 ? " (EXPIRES TODAY)" : ` (expires in ${p.expiresInDays}d)`}`)
@@ -119,7 +121,7 @@ RULES:
 6. Realistic home cooking: weekday meals under 40 minutes, simple techniques.
 7. Number the days from 1 to ${days}.
 8. Estimate calories and nutrition from the complete recipe, including cooking oils and all other ingredients. Report kcal, proteinGrams, carbsGrams and fatGrams for the complete single-person serving.
-${targetsRule({ days, mealTypes, pantry, prefs, maxExtraItems, trainingContext, dailyTargets })}`;
+${targetsRule({ days, mealTypes, pantry, prefs, maxExtraItems, trainingContext, dailyTargets })}${dayNotes?.length ? `\n\nSPECIAL DAYS:\n${dayNotes.map((n) => `- ${n}`).join("\n")}` : ""}`;
 }
 
 function systemInstruction(allergies: string[]) {

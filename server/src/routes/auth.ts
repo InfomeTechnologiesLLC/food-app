@@ -27,7 +27,8 @@ router.post("/register", authLimiter, async (req, res) => {
   const { email, password } = parsed.data;
   if (await userRepo.emailExists(email)) return res.status(409).json({ error: "Email already registered" });
   try {
-    const user = await userRepo.create({ email, passwordHash: await bcrypt.hash(password, 10) });
+    // Exercise starts switched on (beginner, no equipment, 3 days a week), so the coach can plan a week straight away
+    const user = await userRepo.create({ email, passwordHash: await bcrypt.hash(password, 10), trainingEnabled: true });
     res.status(201).json({ token: sign(user._id) });
   } catch (error) {
     // Two simultaneous sign-ups with the same email: the unique index rejects the second one.

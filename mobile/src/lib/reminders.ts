@@ -7,6 +7,7 @@ import { usePantry } from '@/lib/pantry';
 import { planActivityReminders, type ActivityReminder } from '@/lib/activity-reminders';
 import { daysBetween } from '@/lib/coach';
 import { planReminders } from '@/lib/reminder-schedule';
+import { usePeriod } from '@/lib/period';
 import { useCoach } from '@/lib/use-coach';
 import { useWater } from '@/lib/water';
 
@@ -14,7 +15,7 @@ const CHANNEL_ID = 'expiry';
 const SETTINGS_KEY = 'mealmind.reminders';
 const KIND = 'expiry-reminder';
 const ACTIVITY_CHANNEL_ID = 'activity';
-const ACTIVITY_KINDS = ['meal-reminder', 'workout-reminder', 'weigh-in-reminder', 'water-reminder', 'missed-workout'];
+const ACTIVITY_KINDS = ['meal-reminder', 'workout-reminder', 'weigh-in-reminder', 'water-reminder', 'missed-workout', 'period-reminder'];
 
 export interface ReminderSettings {
   /** Pantry expiry digest */
@@ -193,6 +194,7 @@ export function useActivityReminderSync() {
   const { today, food, exercise } = progress;
   const lastWeighIn = series.at(-1)?.date;
   const water = useWater(today);
+  const period = usePeriod(today);
 
   // Wait for real data: with nothing loaded yet we would wrongly cancel reminders that are still valid
   const reminders = settings && !loading && !progress.error && water.data ? planActivityReminders({
@@ -208,6 +210,7 @@ export function useActivityReminderSync() {
       enabled: settings.waterEnabled, startHour: settings.waterStartHour, endHour: settings.waterEndHour,
       intervalHours: settings.waterIntervalHours, goalMl: water.data.goalMl, drankToday: water.data.totalMl,
     },
+    period: { nextStart: period.data?.settings.tracking ? period.data.status.nextStart : null },
   }) : null;
   const signature = reminders?.map((r) => `${r.kind}|${r.date.getTime()}|${r.body}`).join(';');
   // Rebuild every time the app comes back to the front too: the phone may have dropped scheduled reminders

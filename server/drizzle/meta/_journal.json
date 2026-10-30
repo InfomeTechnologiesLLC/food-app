@@ -36,6 +36,20 @@
       "when": 1793255787636,
       "tag": "0004_food_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1793281872677,
+      "tag": "0005_period_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1793346513355,
+      "tag": "0006_training_days",
+      "breakpoints": true
     }
   ]
 }

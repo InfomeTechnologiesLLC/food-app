@@ -26,6 +26,8 @@ export const CALORIE_FLOOR: Record<Sex, number> = { male: 1500, female: 1200 };
 export const MAX_DEFICIT_SHARE = 0.25;
 /** A target within this many kg of the current weight means "maintain". */
 const SAME_WEIGHT_KG = 0.5;
+/** Age used until the user adds a birth year, so targets are shown straight away. */
+export const DEFAULT_AGE = 30;
 export const NOTICE = "These targets are general guidance, not medical advice. If you are pregnant or breastfeeding, or have a medical condition such as diabetes, kidney or heart disease, ask a doctor or dietitian before following them.";
 
 export interface TargetInput {
@@ -78,8 +80,8 @@ export interface Targets {
 
 export interface MissingTargets {
   ready: false;
-  /** Profile fields still needed for the nutrition targets */
-  missing: ("sex" | "birthYear" | "heightCm" | "weightKg" | "activityLevel")[];
+  /** Profile fields still needed for the nutrition targets (birth year is optional: an age of 30 is assumed) */
+  missing: ("sex" | "heightCm" | "weightKg" | "activityLevel")[];
   /** Water only needs the weight, so it is available sooner */
   waterMl: number;
   notice: string;
@@ -108,14 +110,34 @@ export function direction(weightKg: number, targetWeightKg: number | null, goal:
   return goal === "weight_loss" ? "lose" : goal === "muscle_gain" ? "gain" : "maintain";
 }
 
+/**
+ * A sensible target weight from height, weight and the nutrition goal, rounded to 0.5 kg:
+ * - weight loss: lose 10% of the weight, but not below a BMI of 22 (20 when already under 22; none at 20 or less)
+ * - muscle gain: gain 5%, but not above a BMI of 25; underweight people aim for a BMI of 20
+ * - balanced: keep the current weight
+ */
+export function suggestTargetWeight(heightCm: number, weightKg: number, goal: string) {
+  const sq = (heightCm / 100) ** 2;
+  const atBmi = (b: number) => b * sq;
+  const bmi = weightKg / sq;
+  const half = (n: number) => Math.round(n * 2) / 2;
+  let target = weightKg;
+  // Loss stops at BMI 22, or at BMI 20 for people already below 22
+  if (goal === "weight_loss" && bmi > 20) target = Math.min(weightKg, Math.max(weightKg * 0.9, atBmi(bmi > 22 ? 22 : 20)));
+  if (goal === "muscle_gain") target = bmi < 18.5 ? atBmi(20) : Math.max(weightKg, Math.min(weightKg * 1.05, atBmi(25)));
+  // Too small a change to plan for: keep the current weight
+  return Math.abs(target - weightKg) <= SAME_WEIGHT_KG ? half(weightKg) : half(target);
+}
+
 const weeksText = (w: number) => `${w} ${w === 1 ? "week" : "weeks"}`;
 
 export function calculateTargets(i: TargetInput): Targets | MissingTargets {
-  const missing = (["sex", "birthYear", "heightCm", "weightKg", "activityLevel"] as const).filter((k) => i[k] === null || i[k] === undefined);
+  const missing = (["sex", "heightCm", "weightKg", "activityLevel"] as const).filter((k) => i[k] === null || i[k] === undefined);
   if (missing.length) return { ready: false, missing: [...missing], waterMl: waterTarget(i.weightKg, i.activityLevel), notice: NOTICE };
   const sex = i.sex!; const weight = i.weightKg!; const height = i.heightCm!; const activity = i.activityLevel!;
-  const age = i.year - i.birthYear!;
+  const age = i.birthYear ? i.year - i.birthYear : DEFAULT_AGE;
   const warnings: string[] = [];
+  if (!i.birthYear) warnings.push(`Add your birth year in Profile for more exact targets. Until then an age of ${DEFAULT_AGE} is used.`);
 
   const base = bmr(sex, weight, height, age);
   const tdee = base * ACTIVITY_FACTOR[activity];

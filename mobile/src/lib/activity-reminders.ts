@@ -3,7 +3,7 @@
  * Reminders are scheduled on the phone for the next few days and rebuilt whenever the app sees new data, so
  * anything already done today is skipped.
  */
-export type ActivityKind = 'meal-reminder' | 'workout-reminder' | 'weigh-in-reminder' | 'water-reminder' | 'missed-workout';
+export type ActivityKind = 'meal-reminder' | 'workout-reminder' | 'weigh-in-reminder' | 'water-reminder' | 'missed-workout' | 'period-reminder';
 
 export interface ActivityReminder { kind: ActivityKind; date: Date; title: string; body: string; url: string }
 
@@ -20,10 +20,13 @@ export interface ActivityState {
   weighIn: { enabled: boolean; hour: number; daysSinceLast: number | null };
   /** Every `intervalHours` from `startHour` to `endHour` (inclusive). Stops for today once `drankToday` reaches `goalMl`. */
   water?: { enabled: boolean; startHour: number; endHour: number; intervalHours: number; goalMl: number; drankToday: number };
+  /** Female users tracking their period: one reminder two days before the expected start, at PERIOD_REMINDER_HOUR */
+  period?: { nextStart: string | null };
 }
 
 export const HORIZON_DAYS = 7;
 export const MISSED_NUDGE_HOUR = 9;
+export const PERIOD_REMINDER_HOUR = 9;
 /** Water reminders are frequent, so only today and tomorrow are scheduled (iOS keeps at most 64). They are rebuilt on every app open. */
 export const WATER_HORIZON_DAYS = 2;
 export const WATER_INTERVALS = [2, 3] as const;
@@ -121,6 +124,10 @@ export function planActivityReminders(s: ActivityState): ActivityReminder[] {
         out.push({ kind: 'water-reminder', date: fireAt, url: '/', title, body });
       });
     }
+  }
+  if (s.period?.nextStart) {
+    const fireAt = future(addDays(s.period.nextStart, -2), PERIOD_REMINDER_HOUR);
+    if (fireAt) out.push({ kind: 'period-reminder', date: fireAt, url: '/', title: 'Your period may start in 2 days', body: 'Keep your comfort foods and essentials ready. Log it in MealMind when it starts.' });
   }
   const quiet = s.quiet;
   const isQuiet = (d: Date) => {
