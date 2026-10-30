@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
@@ -9,7 +10,7 @@ import { showAlert } from '@/components/themed-alert';
 import { useExercise, useExerciseLibrary, useWorkoutPlans } from '@/lib/exercise';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { localDate } from '@/lib/plans';
+import { dateLabel, localDate } from '@/lib/plans';
 import type { WorkoutPlan, WorkoutDay } from '@/lib/exercise-types';
 import { useTheme } from '@/hooks/use-theme';
 export default function TrainingPlanScreen() {
@@ -27,14 +28,22 @@ export default function TrainingPlanScreen() {
       { text: 'Cancel', style: 'cancel' }, { text: 'Activate', onPress: () => void run(async () => { await api(`/exercise/plans/${plan._id}/activate`, { method: 'POST', body: { revision: plan.__v, activeId: active?._id ?? null, activeRevision: active?.__v ?? null } }); setEdited(null); }) },
     ]);
   };
-  const startDay = (day: WorkoutDay) => { try { const sessionId = start(day, library.data ?? [], plan._id); router.push({ pathname: '/workout/[id]', params: { id: sessionId } }); } catch (e) { setError((e as Error).message); } };
+  const startDay = (day: WorkoutDay) => {
+    try {
+      const open = sessions.find(r => r.session.status === 'in_progress');
+      const sessionId = start(day, library.data ?? [], plan._id);
+      // start() reopens a workout that is already running instead of starting a second one
+      if (open && open.session.scheduledDate !== day.date) showAlert('Finish your current workout first', `“${open.session.title}” is still in progress, so it has been opened.`);
+      router.push({ pathname: '/workout/[id]', params: { id: sessionId } });
+    } catch (e) { showAlert("Couldn't start this workout", (e as Error).message); }
+  };
   return <Screen edges={['bottom']}>
     {plan.status === 'draft' && <ThemedText type="subtitle">Review your AI draft</ThemedText>}
     <Input label="Plan title" value={plan.title} onChangeText={title => setEdited({ ...plan, title })} />
     <ThemedText type="small" themeColor="textSecondary">Plans include preparation time. Choose comfortable working weights during your workout. Stop a movement if it causes pain.</ThemedText>
     {!!error && <ThemedText themeColor="danger">{error}</ThemedText>}
     {plan.days.map((day, di) => <View key={day.date} style={{ backgroundColor: theme.backgroundElement, borderRadius: 16, padding: 16, gap: 12 }}>
-      <ThemedText type="smallBold">{day.date} · {day.title}</ThemedText><ThemedText type="small" themeColor="textSecondary">{day.explanation}</ThemedText>
+      <ThemedText type="smallBold">{day.date === localDate() ? 'Today' : dateLabel(day.date)} · {day.title}</ThemedText><ThemedText type="small" themeColor="textSecondary">{day.explanation}</ThemedText>
       {day.exercises.map((p, pi) => {
         const e = library.data?.find(e => e.id === p.exerciseId);
         const alternatives = library.data?.filter(x => x.category === e?.category && x.tracking === e?.tracking && !plan.context.training.excludedExercises.includes(x.id) && x.equipment.every(eq => plan.context.training.equipment.includes(eq as typeof plan.context.training.equipment[number])) && !day.exercises.some((other, index) => index !== pi && other.exerciseId === x.id));
@@ -48,7 +57,10 @@ export default function TrainingPlanScreen() {
           <ThemedText type="small">Swap exercise</ThemedText><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{alternatives?.map(x => <Chip key={x.id} label={x.name} selected={x.id === p.exerciseId} onPress={() => update({ exerciseId: x.id })} />)}</View>
         </View>;
       })}
-      {plan.status === 'active' && !!day.exercises.length && <Button title={sessions.some(r => r.session.planId === plan._id && r.session.scheduledDate === day.date && r.session.status === 'finished') ? 'Completed · Start another session' : 'Start workout'} onPress={() => startDay(day)} disabled={day.date > localDate() || !!edited} />}
+      {plan.status === 'active' && !!day.exercises.length && (day.date > localDate()
+        ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, backgroundColor: theme.background }}><Ionicons name="calendar-outline" size={18} color={theme.textSecondary} /><ThemedText type="small" themeColor="textSecondary" style={{ flex: 1 }}>You can start this workout on {dateLabel(day.date)}.</ThemedText></View>
+        : edited ? <ThemedText type="small" themeColor="warning">Save your plan edits below before starting this workout.</ThemedText>
+          : <Button title={sessions.some(r => r.session.planId === plan._id && r.session.scheduledDate === day.date && r.session.status === 'finished') ? 'Completed · Start another session' : 'Start workout'} onPress={() => startDay(day)} />)}
     </View>)}
     {edited && <Button title="Save plan edits" onPress={save} loading={busy} />}
     {plan.status === 'draft' && <Button title="Activate this week" onPress={activate} disabled={!!edited} loading={busy} />}

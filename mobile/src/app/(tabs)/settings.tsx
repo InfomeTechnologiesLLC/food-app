@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BottomSheet } from '@/components/bottom-sheet';
-import { BUDGETS, COMMON_ALLERGIES, DIETS, GOALS } from '@/components/preferences-form';
+import { BUDGETS, COMMON_ALLERGIES, DIETS, GOALS, dietLabel } from '@/components/preferences-form';
+import { CuisinePicker, DislikesInput } from '@/components/food-prefs-inputs';
 import { MeasurementsForm } from '@/components/measurements-form';
 import { ReminderSettings } from '@/components/reminder-settings';
 import { ListCard, ListRow, SectionLabel } from '@/components/settings-list';
@@ -19,7 +20,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 import type { BodyMeasurements, Preferences } from '@/lib/types';
 
-type Field = 'diet' | 'allergies' | 'goal' | 'measurements' | 'budget';
+type Field = 'diet' | 'allergies' | 'goal' | 'measurements' | 'budget' | 'cuisine' | 'dislikes';
 
 const SHEET_TITLES: Record<Field, string> = {
   diet: 'Diet',
@@ -27,6 +28,8 @@ const SHEET_TITLES: Record<Field, string> = {
   goal: 'Health goal',
   measurements: 'Body and goal',
   budget: 'Budget',
+  cuisine: 'Food from which country?',
+  dislikes: 'Foods I don’t like',
 };
 
 /** "alex.smith@x.com" → "Alex" */
@@ -102,10 +105,12 @@ export default function SettingsScreen() {
 
       <SectionLabel>Preferences</SectionLabel>
       <ListCard>
-        <ListRow icon="leaf-outline" iconColor={theme.tint} label="Diet" value={prefs.diet === 'none' ? 'No restrictions' : humanize(prefs.diet)} onPress={() => open('diet')} />
+        <ListRow icon="leaf-outline" iconColor={theme.tint} label="Diet" value={dietLabel(prefs.diet)} onPress={() => open('diet')} />
         <ListRow icon="shield-outline" iconColor={theme.danger} label="Allergies" value={summarizeAllergies(prefs.allergies)} onPress={() => open('allergies')} />
                <ListRow icon="radio-button-on-outline" iconColor={theme.warning} label="Nutrition goal" value={humanize(prefs.goal)} onPress={() => open('goal')} />
         <ListRow icon="body-outline" label="Body and goal" value={bodySummary(user.body)} onPress={() => open('measurements')} />
+        <ListRow icon="earth-outline" label="Cuisine" value={prefs.cuisine ?? 'Any'} onPress={() => open('cuisine')} />
+        <ListRow icon="close-circle-outline" label="Foods I don’t like" value={summarizeAllergies(prefs.dislikes ?? [])} onPress={() => open('dislikes')} />
         <ListRow icon="card-outline" label="Budget" value={humanize(prefs.budget)} onPress={() => open('budget')} />
       </ListCard>
 
@@ -147,7 +152,7 @@ export default function SettingsScreen() {
         subtitle={editing === 'allergies' ? 'Choose all that apply' : undefined}
         onClose={close}>
         {draft && editing === 'diet' && (
-          <ChipGroup options={DIETS} value={draft.diet} onChange={(v) => set('diet', v)} format={(d) => (d === 'none' ? 'No restrictions' : humanize(d))} />
+          <ChipGroup options={DIETS} value={draft.diet} onChange={(v) => set('diet', v)} format={dietLabel} />
         )}
         {draft && editing === 'allergies' && (
           <>
@@ -169,6 +174,8 @@ export default function SettingsScreen() {
           <ChipGroup options={GOALS} value={draft.goal} onChange={(v) => set('goal', v)} format={humanize} />
         )}
         {editing === 'measurements' && <MeasurementsForm initial={user.body} onSaved={close} />}
+        {draft && editing === 'cuisine' && <CuisinePicker value={draft.cuisine ?? null} onChange={(v) => set('cuisine', v)} />}
+        {draft && editing === 'dislikes' && <DislikesInput value={draft.dislikes ?? []} onChange={(v) => set('dislikes', v)} />}
         {draft && editing === 'budget' && (
           <ChipGroup options={BUDGETS} value={draft.budget} onChange={(v) => set('budget', v)} format={humanize} />
                 )}

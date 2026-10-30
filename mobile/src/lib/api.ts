@@ -43,7 +43,9 @@ export async function api<T>(path: string, options: {
     const data = await res.json().catch(() => null);
     if (!res.ok) {
       const err = data?.error;
-      const message = typeof err === 'string' ? err : 'Something went wrong. Please check your input.';
+      // In development the server adds `detail` with the underlying reason (e.g. the AI's error)
+      const detail = __DEV__ && typeof data?.detail === 'string' ? `\n\nDetails: ${data.detail}` : '';
+      const message = (typeof err === 'string' ? err : 'Something went wrong. Please check your input.') + detail;
       throw new ApiError(res.status, message, data?.code, data);
     }
     if (data === null) throw new Error('The server returned an unreadable response. Try again.');

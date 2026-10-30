@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { CuisinePicker, DislikesInput } from '@/components/food-prefs-inputs';
 import { MeasurementInputs } from '@/components/measurements-form';
 import { ProfileInputs, profileDraft } from '@/components/profile-inputs';
 import { parseMeasurements, parseProfile } from '@/lib/measurements';
@@ -9,7 +10,9 @@ import { Button, Chip, ChipGroup, Input, Section, humanize } from '@/components/
 import { Spacing } from '@/constants/theme';
 import type { BodyMeasurements, Budget, Diet, Goal, Preferences } from '@/lib/types';
 
-export const DIETS: Diet[] = ['none', 'vegetarian', 'vegan', 'pescatarian', 'keto', 'halal', 'kosher'];
+export const DIETS: Diet[] = ['non_vegetarian', 'vegetarian', 'eggetarian', 'vegan', 'pescatarian', 'keto', 'halal', 'kosher', 'none'];
+/** "non_vegetarian" → "Non-vegetarian", "none" → "No restrictions" */
+export const dietLabel = (d: Diet) => (d === 'none' ? 'No restrictions' : d === 'non_vegetarian' ? 'Non-vegetarian' : d === 'eggetarian' ? 'Eggetarian' : humanize(d));
 export const GOALS: Goal[] = ['balanced', 'weight_loss', 'muscle_gain'];
 export const BUDGETS: Budget[] = ['low', 'medium', 'high'];
 export const COMMON_ALLERGIES = ['peanuts', 'tree nuts', 'milk', 'eggs', 'gluten', 'soy', 'fish', 'shellfish', 'sesame'];
@@ -59,7 +62,16 @@ export function PreferencesForm({
   return (
     <View style={{ gap: Spacing.four }}>
       <Section title="Diet">
-        <ChipGroup options={DIETS} value={prefs.diet} onChange={(v) => set('diet', v)} format={humanize} />
+        <ChipGroup options={DIETS} value={prefs.diet} onChange={(v) => set('diet', v)} format={dietLabel} />
+      </Section>
+
+      <Section title="Food from which country?">
+        <ThemedText type="small" themeColor="textSecondary">Meal plans use everyday home cooking from here.</ThemedText>
+        <CuisinePicker value={prefs.cuisine ?? null} onChange={(v) => set('cuisine', v)} />
+      </Section>
+
+      <Section title="Foods you don’t like (optional)">
+        <DislikesInput value={prefs.dislikes ?? []} onChange={(v) => set('dislikes', v)} />
       </Section>
 
       <Section title="Allergies">

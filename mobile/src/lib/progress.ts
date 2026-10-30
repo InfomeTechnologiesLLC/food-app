@@ -77,6 +77,9 @@ export function useProgress(range: RangeDays) {
     },
     refreshing: history.isRefetching || sessionPages.isRefetching || saved.isRefetching,
     today,
+    dates,
+    /** Food eaten per date (calories, macros, meal count) */
+    totals,
     // Reminders only look ahead, so they use the active plans and not the saved past days
     mealPlanDates: plan.data?.days.map((d) => d.date).filter((d): d is string => !!d) ?? [],
     workoutDates: activeWorkoutDates,

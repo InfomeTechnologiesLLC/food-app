@@ -55,6 +55,11 @@ export const users = mysqlTable("users", {
   allergies: json<string[]>("allergies").notNull().$defaultFn(() => []),
   goal: varchar("goal", { length: 30 }).notNull().default("balanced"),
   budget: varchar("budget", { length: 20 }).notNull().default("medium"),
+  /** Country whose home cooking the user prefers, e.g. "India" */
+  cuisine: varchar("cuisine", { length: 60 }),
+  /** Foods the user doesn't like; meal plans and the coach avoid them where possible */
+  // The ('[]') default fills existing rows on both MySQL 8 and MariaDB when the column is added
+  dislikes: json<string[]>("disliked_foods").notNull().default(sql`('[]')`).$defaultFn(() => []),
   // body
   heightCm: double("height_cm"),
   weightKg: double("weight_kg"),

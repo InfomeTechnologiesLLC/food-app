@@ -4,12 +4,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
 import { BmiCard } from '@/components/bmi-card';
-import { DailyProgressCard } from '@/components/daily-progress-card';
-import { HealthCard } from '@/components/health-card';
 import { TargetsCard } from '@/components/targets-card';
 import { useCoachToday } from '@/lib/coach-api';
 import { WaterCard } from '@/components/water-card';
-import { ExerciseProgressCard } from '@/components/exercise-progress-card';
+import { TodayOverview } from '@/components/today-overview';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -54,12 +52,12 @@ export default function HomeScreen() {
   // Runs the weekly check-in when it is due (the result shows on the targets card)
   useCoachToday(date);
   const { data: items = [], isLoading, refetch, isRefetching } = usePantry();
-  const { data: plans = [], refetch: refetchPlans, isLoading: plansLoading, error: plansError, isRefetching: plansRefetching } = usePlans();
+  const { data: plans = [], refetch: refetchPlans, isLoading: plansLoading, isRefetching: plansRefetching } = usePlans();
   const history = useDailyHistory(date);
   const workouts = useWorkoutPlans();
   const { sync: syncWorkouts, syncing: workoutsSyncing } = useExercise();
   const latest = activePlan(plans);
-  const { data: currentPlan, isLoading: planLoading, error: planError, refetch: refetchPlan, isRefetching: planRefetching } = usePlan(latest?._id);
+  const { data: currentPlan, isLoading: planLoading, refetch: refetchPlan, isRefetching: planRefetching } = usePlan(latest?._id);
   const refresh = () => {
     refetch();
     history.refetch();
@@ -79,8 +77,13 @@ export default function HomeScreen() {
 
   return (
     <Screen edges={['bottom']} refreshControl={<RefreshControl refreshing={isRefetching || plansRefetching || planRefetching || history.isRefetching || workouts.isRefetching || workoutsSyncing} onRefresh={refresh} />}>
+      {/* The app is about reaching your targets, so progress comes first and the pantry last */}
+      <ThemedText type="small" themeColor="textSecondary" style={{ paddingTop: Spacing.two }}>{dateLabel}</ThemedText>
+      <TodayOverview />
+      <TargetsCard date={date} plan={currentPlan} history={history.data?.totals[date]} loading={plansLoading || planLoading || history.isLoading} />
+      <WaterCard date={date} />
+
       <View style={{ gap: Spacing.one, paddingTop: Spacing.two }}>
-        <ThemedText type="small" themeColor="textSecondary">{dateLabel}</ThemedText>
         <ThemedText type="subtitle">
           {"What’s "}<ThemedText type="subtitle" themeColor="tint">cooking?</ThemedText>
         </ThemedText>
@@ -89,15 +92,15 @@ export default function HomeScreen() {
       <View style={[styles.row, { gap: Spacing.two, alignItems: 'stretch' }]}>
         <Pressable
           onPress={() => router.navigate('/pantry')}
-          style={({ pressed }) => [styles.tile, styles.heroTile, { backgroundColor: theme.tint, opacity: pressed ? 0.85 : 1 }]}>
+          style={({ pressed }) => [styles.tile, styles.heroTile, { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: pressed ? 0.85 : 1 }]}>
           <View style={styles.rowBetween}>
-            <ThemedText style={[styles.eyebrow, { color: theme.tintText }]}>YOUR PANTRY</ThemedText>
-            <Ionicons name="basket-outline" size={20} color={theme.tintText} />
+            <ThemedText style={[styles.eyebrow, { color: theme.textSecondary }]}>YOUR PANTRY</ThemedText>
+            <Ionicons name="basket-outline" size={20} color={theme.tint} />
           </View>
-          <ThemedText style={[styles.heroValue, { color: theme.tintText }]}>{isLoading ? '–' : items.length}</ThemedText>
+          <ThemedText style={styles.heroValue}>{isLoading ? '–' : items.length}</ThemedText>
           <View style={{ gap: Spacing.two }}>
-            <ThemedText type="small" style={{ color: theme.tintText }}>{plural(items.length, 'item')} tracked</ThemedText>
-            <Ionicons style={{ alignSelf: 'flex-end' }} name="arrow-forward" size={22} color={theme.tintText} />
+            <ThemedText type="small" themeColor="textSecondary">{plural(items.length, 'item')} tracked</ThemedText>
+            <Ionicons style={{ alignSelf: 'flex-end' }} name="arrow-forward" size={22} color={theme.tint} />
           </View>
         </Pressable>
 
@@ -135,36 +138,15 @@ export default function HomeScreen() {
           </ThemedText>
         )}
       </View>
-
-      <TargetsCard date={date} plan={currentPlan} history={history.data?.totals[date]} loading={plansLoading || planLoading || history.isLoading} />
-      <WaterCard date={date} />
-
-      <HealthCard compact />
-
-      <View style={[styles.progressCard, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
-        <ThemedText style={{ fontSize: 20, fontWeight: 700 }}>Today’s progress</ThemedText>
-        <DailyProgressCard
-          embedded
-          date={date}
-          plan={currentPlan}
-          history={history.data?.totals[date]}
-          loading={plansLoading || planLoading || history.isLoading}
-          error={plansError ?? planError ?? history.error}
-          onRetry={refresh}
-        />
-        <View style={{ height: 1, backgroundColor: theme.border }} />
-        <ExerciseProgressCard embedded date={date} />
-      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  progressCard: { borderRadius: 20, padding: Spacing.three, gap: Spacing.three, borderWidth: 1 },
   row: { flexDirection: 'row', alignItems: 'center' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   tile: { borderRadius: 20, padding: Spacing.three },
-  heroTile: { flex: 1, justifyContent: 'space-between', minHeight: 176 },
+  heroTile: { flex: 1, justifyContent: 'space-between', minHeight: 176, borderWidth: 1 },
   statTile: { flex: 1, borderWidth: 1, justifyContent: 'space-between', gap: Spacing.two },
   statValue: { fontSize: 24, lineHeight: 30, fontWeight: 700 },
   heroValue: { fontSize: 56, lineHeight: 64, fontWeight: 700 },

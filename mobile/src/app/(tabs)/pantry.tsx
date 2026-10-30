@@ -87,13 +87,21 @@ export default function PantryScreen() {
             <ThemedText themeColor="danger">Couldn’t load pantry: {(error as Error).message}</ThemedText>
           ) : (
             <ThemedText themeColor="textSecondary">
-              {search || category ? 'No matches.' : 'Your pantry is empty. Add what you have.'}
+              {search || category ? 'No matches.' : 'Your pantry is empty. Tap the scan button to scan groceries or a receipt, or + to add an item.'}
             </ThemedText>
           )
         }
       />
     </Screen>
+      {/* The two ways to add food: scan groceries or a receipt, or add one item by hand */}
       <FloatingActions>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Scan groceries or receipt"
+          onPress={() => router.navigate('/scan')}
+          style={({ pressed }) => [styles.scan, { backgroundColor: theme.tint, opacity: pressed ? 0.7 : 1 }]}>
+          <Ionicons name="scan-outline" size={24} color={theme.tintText} />
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Add item"
@@ -112,5 +120,6 @@ const styles = StyleSheet.create({
   search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.two, height: 50, borderRadius: 14, borderWidth: 1, paddingHorizontal: Spacing.three },
   searchInput: { flex: 1, height: '100%', fontSize: 15 },
   add: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  scan: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.one },
 });

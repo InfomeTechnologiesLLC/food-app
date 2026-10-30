@@ -8,6 +8,8 @@ import { consumeUsage, refundUsage } from "../lib/usage.js";
 import { loadUser, todaySummary } from "../lib/coach-data.js";
 import { runWeeklyCheckIn } from "../lib/weekly-check-in.js";
 import { targetChangeRepo } from "../repos/target-changes.js";
+import { aiFailure } from "../ai/schema.js";
+import { devDetail } from "./food-log.js";
 import { addDays, calendarToday, dateSchema, timezoneSchema } from "../lib/calendar.js";
 
 const router = Router();
@@ -47,8 +49,8 @@ router.post("/next-meal", async (req: AuthRequest, res) => {
   } catch (err) {
     await refundUsage(req.userId!, "coachThisMonth");
     if (err instanceof AIError) return res.status(err.status).json({ error: err.message });
-    console.error("next meal failed", err);
-    res.status(502).json({ error: "Couldn't suggest a meal. Please try again." });
+    console.error("next meal failed:", aiFailure(err));
+    res.status(502).json({ error: "Couldn't suggest a meal. Please try again.", ...devDetail(err) });
   }
 });
 
@@ -64,8 +66,8 @@ router.post("/chat", async (req: AuthRequest, res) => {
   } catch (err) {
     await refundUsage(req.userId!, "coachThisMonth");
     if (err instanceof AIError) return res.status(err.status).json({ error: err.message });
-    console.error("coach chat failed", err);
-    res.status(502).json({ error: "The coach couldn't answer. Please try again." });
+    console.error("coach chat failed:", aiFailure(err));
+    res.status(502).json({ error: "The coach couldn't answer. Please try again.", ...devDetail(err) });
   }
 });
 

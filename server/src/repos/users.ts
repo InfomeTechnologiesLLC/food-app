@@ -9,7 +9,7 @@ export type Counter = "scansThisMonth" | "plansThisMonth" | "coachThisMonth";
 /** A user shaped the way the API has always returned it. */
 export interface UserDoc {
   _id: string; email: string; passwordHash: string; plan: "free" | "plus";
-  preferences: { diet: string; allergies: string[]; goal: string; budget: string };
+  preferences: { diet: string; allergies: string[]; goal: string; budget: string; cuisine: string | null; dislikes: string[] };
   body: {
     heightCm: number | null; weightKg: number | null; weightUpdatedAt: Date | null; targetWeightKg: number | null;
     sex: Row["sex"]; birthYear: number | null; activityLevel: Row["activityLevel"]; goalWeeks: number | null;
@@ -25,7 +25,7 @@ export interface UserDoc {
 export function toUser(row: Row): UserDoc {
   return {
     _id: row.id, email: row.email, passwordHash: row.passwordHash, plan: row.plan,
-    preferences: { diet: row.diet, allergies: row.allergies, goal: row.goal, budget: row.budget },
+    preferences: { diet: row.diet, allergies: row.allergies, goal: row.goal, budget: row.budget, cuisine: row.cuisine, dislikes: Array.isArray(row.dislikes) ? row.dislikes : [] },
     body: { heightCm: row.heightCm, weightKg: row.weightKg, weightUpdatedAt: row.weightUpdatedAt, targetWeightKg: row.targetWeightKg,
       sex: row.sex, birthYear: row.birthYear, activityLevel: row.activityLevel, goalWeeks: row.goalWeeks },
     training: { enabled: row.trainingEnabled, goal: row.trainingGoal, experience: row.trainingExperience, equipment: row.trainingEquipment,
@@ -99,7 +99,7 @@ export const userRepo = {
   /** Resets every profile field to its default, keeping only id, email, password hash and createdAt. */
   async resetToDefaults(id: string, conn: Conn = getDb()) {
     await conn.update(users).set({
-      plan: "free", diet: "none", allergies: [], goal: "balanced", budget: "medium", heightCm: null, weightKg: null, weightUpdatedAt: null, targetWeightKg: null,
+      plan: "free", diet: "none", allergies: [], goal: "balanced", budget: "medium", cuisine: null, dislikes: [], heightCm: null, weightKg: null, weightUpdatedAt: null, targetWeightKg: null,
       sex: null, birthYear: null, activityLevel: null, goalWeeks: null,
       trainingEnabled: false, trainingGoal: "general_fitness", trainingExperience: "beginner", trainingEquipment: [], trainingWeekdays: [1, 3, 5],
       trainingSessionMinutes: 30, trainingExcludedExercises: [], usagePeriod: new Date().toISOString().slice(0, 7), scansThisMonth: 0, plansThisMonth: 0, coachThisMonth: 0,

@@ -11,7 +11,7 @@ import type { Meal } from '@/lib/types';
 import { stockMessage } from '@/lib/stock-message';
 
 /** `onToggleEaten` is only passed for the current plan, where meals can be marked as eaten. */
-export function MealCard({ meal, onToggleEaten, toggling, unavailableLabel, actionDisabled }: { meal: Meal; onToggleEaten?: () => void; toggling?: boolean; unavailableLabel?: string; actionDisabled?: boolean }) {
+export function MealCard({ meal, onToggleEaten, onChange, toggling, unavailableLabel, actionDisabled }: { meal: Meal; onToggleEaten?: () => void; onChange?: () => void; toggling?: boolean; unavailableLabel?: string; actionDisabled?: boolean }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
 
@@ -95,6 +95,12 @@ export function MealCard({ meal, onToggleEaten, toggling, unavailableLabel, acti
           )}
         </Pressable>
       )}
+      {onChange && !meal.eaten && (
+        <Pressable accessibilityRole="button" onPress={onChange} disabled={actionDisabled} hitSlop={6} style={styles.change}>
+          <Ionicons name="swap-horizontal-outline" size={16} color={theme.tint} />
+          <ThemedText type="smallBold" themeColor="tint">Change this meal</ThemedText>
+        </Pressable>
+      )}
     </Pressable>
   );
 }
@@ -130,4 +136,5 @@ const styles = StyleSheet.create({
   card: { borderRadius: 12, padding: Spacing.three, gap: Spacing.two, borderWidth: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   eatenButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 10, borderWidth: 1 },
+  change: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 4 },
 });

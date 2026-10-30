@@ -2,7 +2,9 @@ import jwt from "jsonwebtoken";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
-import { generatePlan, MEAL_TYPES } from "../ai/plan.js";
+import { generatePlan, generateReplacementMeal, MEAL_TYPES } from "../ai/plan.js";
+import { aiFailure } from "../ai/schema.js";
+import { devDetail } from "./food-log.js";
 import { AIError } from "../ai/gemini.js";
 import { stockShoppingItem } from "../lib/stock-shopping.js";
 import { buildShoppingList, shoppingRows } from "../lib/shopping.js";
@@ -70,7 +72,7 @@ router.post("/", async (req: AuthRequest, res) => {
       // Keep the requested meal order consistent (breakfast → snack)
       mealTypes: MEAL_TYPES.filter((t) => parsed.data.mealTypes.includes(t)),
       maxExtraItems: parsed.data.maxExtraItems,
-      prefs: { diet: prefs.diet, allergies: prefs.allergies ?? [], goal: prefs.goal, budget: prefs.budget, heightCm: user.body.heightCm, weightKg: user.body.weightKg },
+      prefs: { diet: prefs.diet, allergies: prefs.allergies ?? [], goal: prefs.goal, budget: prefs.budget, cuisine: prefs.cuisine, dislikes: prefs.dislikes, heightCm: user.body.heightCm, weightKg: user.body.weightKg },
       trainingContext,
       dailyTargets: targets.ready ? targets : null,
       pantry: pantry.flatMap((ingredient) => ingredient.batches.map((batch) => ({
@@ -216,6 +218,64 @@ router.post("/:id/meals/:mealId/eaten", async (req: AuthRequest, res) => {
     if (error instanceof PantryShortage) return res.status(409).json({ error: error.message, code: "SHORTAGE", shortages: error.shortages });
     throw error;
   }
+});
+
+/**
+ * Changes one meal of the current plan from the user's request ("I don't like potato, use egg").
+ * The AI runs outside the transaction; the swap is then saved only if the plan hasn't changed meanwhile.
+ * `avoid` foods can also be remembered as dislikes for future plans.
+ */
+router.post("/:id/meals/:mealId/change", async (req: AuthRequest, res) => {
+  const body = z.object({
+    request: z.string().trim().min(2).max(300),
+    avoid: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(10).default([]),
+    remember: z.boolean().default(false),
+    revision: z.number().int().nonnegative(),
+    timezone: timezoneSchema,
+  }).strict().safeParse(req.body);
+  if (!body.success || !isId(req.params.id) || !isId(req.params.mealId)) return res.status(400).json({ error: "Describe what you would like instead." });
+  const { id: planId, mealId } = req.params as { id: string; mealId: string };
+  const plan = await mealPlanRepo.findById(planId, req.userId!);
+  const day = plan?.status === "active" ? plan.days.find((d) => d.meals.some((m) => m._id === mealId)) : undefined;
+  const meal = day?.meals.find((m) => m._id === mealId);
+  if (!plan || !day || !meal) return res.status(404).json({ error: "Meal no longer exists. Refresh your plan." });
+  if (meal.eaten) return res.status(409).json({ error: "This meal is already marked as eaten." });
+  if (day.date && day.date < calendarToday(body.data.timezone)) return res.status(409).json({ error: "Past meals can't be changed." });
+  if (plan.__v !== body.data.revision) return res.status(409).json({ error: "Your plan changed. Refresh and try again.", code: "SCHEDULE_CONFLICT" });
+
+  const user = (await userRepo.findById(req.userId!))!;
+  const dislikes = [...new Set([...user.preferences.dislikes, ...body.data.avoid])].slice(0, 30);
+  if (body.data.remember && body.data.avoid.length) await userRepo.updatePreferences(req.userId!, { dislikes });
+  if (!(await consumeUsage(req.userId!, "coachThisMonth"))) {
+    return res.status(402).json({ error: "You've used all your free AI coach requests this month. Upgrade to Plus for unlimited coaching.", code: "LIMIT_REACHED" });
+  }
+  let replacement;
+  try {
+    const now = Date.now();
+    const pantry = await readPantry(req.userId!);
+    replacement = await generateReplacementMeal({
+      old: { type: meal.type, title: meal.title, calories: meal.calories, proteinGrams: meal.nutrition.proteinGrams },
+      request: body.data.request,
+      sameDay: day.meals.filter((m) => m._id !== mealId).map((m) => m.title),
+      pantry: pantry.flatMap((i) => i.batches.map((b) => ({ name: i.name, quantity: b.quantity, unit: b.unit, expiresInDays: b.expiryDate ? Math.round((b.expiryDate.getTime() - now) / 86_400_000) : null }))),
+      prefs: { ...user.preferences, dislikes },
+    });
+  } catch (err) {
+    await refundUsage(req.userId!, "coachThisMonth");
+    if (err instanceof AIError) return res.status(err.status).json({ error: err.message });
+    console.error("meal change failed:", aiFailure(err));
+    return res.status(502).json({ error: "Couldn't change this meal. Please try again.", ...devDetail(err) });
+  }
+  // If the plan changed while the AI was working, the request isn't charged
+  const saved = await scheduleTransaction(req.userId!, async (tx) => {
+    const current = await mealPlanRepo.findById(planId, req.userId!, tx);
+    const currentDay = current?.days.find((d) => d.meals.some((m) => m._id === mealId));
+    const index = currentDay?.meals.findIndex((m) => m._id === mealId) ?? -1;
+    if (!current || !currentDay || index < 0 || current.__v !== body.data.revision || currentDay.meals[index]!.eaten) throw new ScheduleConflict();
+    currentDay.meals[index] = { ...replacement, _id: newId(), eaten: false, historyEntryId: null };
+    return mealPlanRepo.save(tx, current);
+  }).catch(async (err) => { await refundUsage(req.userId!, "coachThisMonth"); throw err; });
+  await respondWith(res, saved, req.userId!);
 });
 
 export default router;

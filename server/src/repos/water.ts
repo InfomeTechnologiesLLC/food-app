@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb, type Conn } from "../db/client.js";
 import { waterLogs } from "../db/schema.js";
 import { newId } from "../db/ids.js";
@@ -16,6 +16,12 @@ export const waterRepo = {
     if (!row) return null;
     await conn.delete(waterLogs).where(and(eq(waterLogs.id, id), eq(waterLogs.userId, userId)));
     return row.date;
+  },
+  /** Total per day between two dates (inclusive); days without water are left out. */
+  async totals(userId: string, from: string, to: string, conn: Conn = getDb()) {
+    return conn.select({ date: waterLogs.date, totalMl: sql<number>`sum(${waterLogs.amountMl})`.mapWith(Number) })
+      .from(waterLogs).where(and(eq(waterLogs.userId, userId), gte(waterLogs.date, from), lte(waterLogs.date, to)))
+      .groupBy(waterLogs.date).orderBy(asc(waterLogs.date));
   },
   /** One day's drinks, oldest first, and their total. */
   async day(userId: string, date: string, conn: Conn = getDb()): Promise<WaterDay> {

@@ -8,6 +8,11 @@ import { consumeUsage, refundUsage } from "../lib/usage.js";
 import { foodLogSchema, logFood } from "../lib/food-log.js";
 import { userRepo } from "../repos/users.js";
 import { addDays } from "../lib/calendar.js";
+import { aiFailure } from "../ai/schema.js";
+import { env } from "../env.js";
+
+/** While developing, the app also shows why the AI failed (never in production). */
+export const devDetail = (err: unknown) => (env.NODE_ENV === "production" ? {} : { detail: aiFailure(err) });
 
 const router = Router();
 router.use(requireAuth);
@@ -27,8 +32,8 @@ router.post("/estimate", upload.single("image"), async (req: AuthRequest, res) =
   } catch (err) {
     await refundUsage(req.userId!, "coachThisMonth");
     if (err instanceof AIError) return res.status(err.status).json({ error: err.message });
-    console.error("food estimate failed", err);
-    res.status(502).json({ error: "Couldn't estimate that. Please try again." });
+    console.error("food estimate failed:", aiFailure(err));
+    res.status(502).json({ error: "Couldn't estimate that. Please try again.", ...devDetail(err) });
   }
 });
 

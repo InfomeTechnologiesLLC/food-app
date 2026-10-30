@@ -107,7 +107,7 @@ try {
     const counts = await Promise.all([mealPlanRepo.count({ userId }, tx), foodHistoryRepo.count({ userId }, tx), pantryRepo.count(userId, tx),
       stockOperationRepo.count(userId, tx), workoutPlanRepo.count({ userId }, tx), workoutSessionRepo.count(userId, tx)]);
     if (counts.some(Boolean)) throw new Error('This account already has data. Use --reset --confirm to replace mock data.');
-    const preferences = { diet: 'vegetarian', allergies: [], goal: 'balanced', budget: 'medium' };
+    const preferences = { diet: 'vegetarian', allergies: [], goal: 'balanced', budget: 'medium', cuisine: 'India', dislikes: [] };
     await userRepo.setProfile(userId, { preferences, body, training, onboarded: true }, tx);
     await addStockInSession(userId, key, pantry, tx);
     const trainingPlan = await workoutPlanRepo.create({ userId, ...workout, context, status: 'active' }, tx);

@@ -12,7 +12,7 @@ function UsageStat({ label, used, limit }: { label: string; used: number; limit:
   return (
     <View style={styles.stat}>
       <ProgressRing progress={pct} label={String(used)} color={limit && pct >= 1 ? theme.danger : theme.tint} />
-      <View style={{ flex: 1 }}>
+      <View style={{ alignItems: 'center' }}>
         <ThemedText style={{ fontWeight: 700 }}>{label}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 13 }}>
           {limit === null ? 'Unlimited' : `${used} of ${limit} used`}
@@ -38,5 +38,5 @@ export function UsageCard({ user }: { user: User }) {
 
 const styles = StyleSheet.create({
   card: { flexDirection: 'row', borderRadius: 20 },
-  stat: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.three, padding: Spacing.three },
+  stat: { flex: 1, alignItems: 'center', gap: Spacing.two, padding: Spacing.three },
 });

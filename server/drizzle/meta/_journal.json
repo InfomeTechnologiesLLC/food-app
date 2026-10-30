@@ -29,6 +29,13 @@
       "when": 1793190796574,
       "tag": "0003_coach",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1793255787636,
+      "tag": "0004_food_preferences",
+      "breakpoints": true
     }
   ]
 }

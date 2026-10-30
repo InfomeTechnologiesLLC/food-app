@@ -3,6 +3,7 @@ import { z } from "zod";
 import { userRepo, type UserDoc } from "../repos/users.js";
 import { waterRepo } from "../repos/water.js";
 import { ACTIVITY_LEVELS, SEXES } from "../lib/targets.js";
+import { DIETS } from "../lib/food-prefs.js";
 import { targetsForUser } from "../lib/user-targets.js";
 import { isId } from "../db/ids.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
@@ -16,10 +17,12 @@ const router = Router();
 router.use(requireAuth);
 
 const preferencesSchema = z.object({
-  diet: z.enum(["none", "vegetarian", "vegan", "pescatarian", "keto", "halal", "kosher"]),
+  diet: z.enum(DIETS),
   allergies: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(20),
   goal: z.enum(["balanced", "weight_loss", "muscle_gain"]),
   budget: z.enum(["low", "medium", "high"]),
+  cuisine: z.string().trim().min(2).max(60).nullable(),
+  dislikes: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(30),
 });
 
 router.patch("/preferences", async (req: AuthRequest, res) => {
@@ -93,6 +96,13 @@ const waterDay = async (userId: string, date: string) => {
   const user = await userRepo.findById(userId);
   return { ...(await waterRepo.day(userId, date)), goalMl: user ? targetsForUser(user).waterMl : 2000 };
 };
+// Water per day for a date range (Progress & tracking)
+router.get("/water", async (req: AuthRequest, res) => {
+  const q = z.object({ from: dateSchema, to: dateSchema }).strict().refine((r) => r.from <= r.to && r.to <= addDays(r.from, 400)).safeParse(req.query);
+  if (!q.success) return res.status(400).json({ error: "Invalid date range" });
+  const user = await userRepo.findById(req.userId!);
+  res.json({ goalMl: user ? targetsForUser(user).waterMl : 2000, days: await waterRepo.totals(req.userId!, q.data.from, q.data.to) });
+});
 router.get("/water/:date", async (req: AuthRequest, res) => {
   const date = dateSchema.safeParse(req.params.date);
   if (!date.success) return res.status(400).json({ error: "Invalid date" });

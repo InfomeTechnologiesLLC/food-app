@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { gemini, GEMINI_MODEL, withRetry, AIError } from "./gemini.js";
+import { geminiSchema } from "./schema.js";
 
 /**
  * Estimates calories and macros for food the user describes or photographs.
  * The result is only a draft: the user checks it before anything is logged (POST /food-log).
  */
 export const estimatedItemSchema = z.object({
-  name: z.string().trim().min(1).max(80).describe("What it is, e.g. 'paratha', 'masala chai with sugar'"),
+  name: z.string().trim().min(1).transform((s) => s.slice(0, 80)).describe("What it is, e.g. 'paratha', 'masala chai with sugar'"),
   quantity: z.number().positive().max(10000).describe("How much, e.g. 2"),
-  unit: z.string().trim().min(1).max(20).describe("e.g. pcs, cup, g, ml, bowl"),
+  unit: z.string().trim().min(1).transform((s) => s.slice(0, 20)).describe("e.g. pcs, cup, g, ml, bowl"),
   calories: z.number().nonnegative().max(5000),
   proteinGrams: z.number().nonnegative().max(500),
   carbsGrams: z.number().nonnegative().max(1000),
@@ -16,16 +17,16 @@ export const estimatedItemSchema = z.object({
 });
 const estimateSchema = z.object({
   isFood: z.boolean().describe("false when the text or photo does not describe food or drink the user had"),
-  title: z.string().trim().max(120).describe("Short name for the whole meal, e.g. '2 parathas and tea'"),
-  items: z.array(estimatedItemSchema).max(20),
+  title: z.string().trim().transform((s) => s.slice(0, 120)).describe("Short name for the whole meal, e.g. '2 parathas and tea'"),
+  items: z.array(estimatedItemSchema).transform((items) => items.slice(0, 20)),
   confidence: z.enum(["high", "medium", "low"]).describe("How sure you are about the portions"),
-  note: z.string().max(300).describe("One short sentence on what was assumed (portion size, oil, sugar), or empty"),
+  note: z.string().transform((s) => s.slice(0, 300)).describe("One short sentence on what was assumed (portion size, oil, sugar), or empty"),
 });
 export type FoodEstimate = z.infer<typeof estimateSchema> & {
   totals: { calories: number; proteinGrams: number; carbsGrams: number; fatGrams: number };
 };
 
-const responseJsonSchema = z.toJSONSchema(estimateSchema);
+const responseJsonSchema = geminiSchema(estimateSchema);
 const INSTRUCTIONS = `You estimate the nutrition of food a person says they ate, for a fitness app.
 - List each food or drink separately with a realistic home portion when the amount is not given. Indian home cooking is common: count oil and ghee used in cooking, sugar in tea and coffee.
 - Give calories, protein, carbs and fat for the whole amount of each item, not per 100 g.

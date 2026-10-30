@@ -25,5 +25,15 @@ export function useWaterActions(date: string) {
   return { add, undo };
 }
 
+/** Water per day for a date range, plus the current goal. */
+export function useWaterRange(from: string, to: string) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['water', user?._id, 'range', from, to],
+    enabled: !!user,
+    queryFn: () => api<{ goalMl: number; days: { date: string; totalMl: number }[] }>(`/me/water?${new URLSearchParams({ from, to })}`),
+  });
+}
+
 /** "1.25 L" */
 export const litres = (ml: number) => `${(ml / 1000).toFixed(ml % 100 === 0 ? 1 : 2)} L`;

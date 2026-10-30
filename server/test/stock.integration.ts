@@ -245,7 +245,7 @@ test("development mock reset removes domain data and preserves login credentials
   assert.equal(Number(batches[0]!.n), 0, "child rows are removed by ON DELETE CASCADE");
   const preserved = await userRepo.findById(userId);
   assert.equal(preserved!.email, account!.email); assert.equal(preserved!.passwordHash, account!.passwordHash);
-  assert.deepEqual(preserved!.preferences, { diet: "none", allergies: [], goal: "balanced", budget: "medium" });
+  assert.deepEqual(preserved!.preferences, { diet: "none", allergies: [], goal: "balanced", budget: "medium", cuisine: null, dislikes: [] });
 });
 test("whole-plan replacement refuses a schedule containing only the same protected eaten meals", async () => {
   const plan = await makePlan(); await addStock(userId, "whole-noop:stock", [item]); await mark(plan);

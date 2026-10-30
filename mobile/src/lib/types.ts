@@ -1,6 +1,6 @@
 import type { TrainingPreferences } from './exercise-types';
 
-export type Diet = 'none' | 'vegetarian' | 'vegan' | 'pescatarian' | 'keto' | 'halal' | 'kosher';
+export type Diet = 'none' | 'non_vegetarian' | 'vegetarian' | 'eggetarian' | 'vegan' | 'pescatarian' | 'keto' | 'halal' | 'kosher';
 export type Goal = 'balanced' | 'weight_loss' | 'muscle_gain';
 export type Budget = 'low' | 'medium' | 'high';
 
@@ -9,6 +9,10 @@ export interface Preferences {
   allergies: string[];
   goal: Goal;
   budget: Budget;
+  /** Country whose home cooking meal plans follow */
+  cuisine?: string | null;
+  /** Foods meal plans and the coach avoid where possible */
+  dislikes?: string[];
 }
 
 export type Sex = 'male' | 'female';

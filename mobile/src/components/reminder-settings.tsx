@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { Platform, Pressable, Switch, View } from 'react-native';
 
 import { BottomSheet } from '@/components/bottom-sheet';
 import { ListCard, ListRow, SectionLabel } from '@/components/settings-list';
@@ -37,7 +37,25 @@ export function ReminderSettings() {
   const [timeFor, setTimeFor] = useState<Kind | null>(null);
   const [waterOpen, setWaterOpen] = useState(false);
   const [quietOpen, setQuietOpen] = useState(false);
-  if (!notificationsSupported || !settings) return null;
+  if (!notificationsSupported) {
+    // Expo Go on Android and the web can't schedule phone reminders, so explain instead of hiding the section
+    return (
+      <>
+        <SectionLabel>Notifications</SectionLabel>
+        <ListCard>
+          <ListRow
+            icon="notifications-off-outline"
+            label="Reminders need the installed app"
+            subtitle={Platform.OS === 'web'
+              ? 'Browsers can’t show MealMind reminders. Use the phone app.'
+              : 'Expo Go can’t run reminders. Install a development build (npx expo run:android) to get water, meal and workout reminders.'}
+            right={<View />}
+          />
+        </ListCard>
+      </>
+    );
+  }
+  if (!settings) return null;
 
    
   const toggle = async (key: 'enabled' | 'waterEnabled' | 'quietEnabled' | (typeof ACTIVITY)[Kind]['enabled'], on: boolean) => {

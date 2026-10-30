@@ -11,6 +11,7 @@ import { calendarToday, dateSchema, timezoneSchema } from '../lib/calendar.js';
 import { generateWorkout } from '../ai/exercise.js';
 import { AIError } from '../ai/gemini.js';
 import { plannedDayRepo } from '../repos/planned-days.js';
+import { targetsForUser } from '../lib/user-targets.js';
 import { workoutPlanDays } from '../lib/planned-days.js';
 const router = Router();
 router.use(requireAuth);
@@ -30,7 +31,10 @@ router.post('/plans', async (req: AuthRequest, res) => {
   const prefs = trainingSchema.safeParse(user.training);
   if (!prefs.success || !prefs.data.enabled) return res.status(400).json({ error: 'Set up exercise preferences first' });
   const sessions = await workoutSessionRepo.listByStart(req.userId!, 200);
-  const context: WorkoutContext = { ...body.data, training: prefs.data, body: user.body ?? {}, recentSessions: sessions.map(s => archiveWorkoutDay(s)).filter(s => s.status === 'finished').slice(0, 10).map(({ date, feedback, exercises, notes }) => ({ date, feedback, exercises, notes })) };
+  const targets = targetsForUser(user);
+  const bodyGoal = targets.ready ? { direction: targets.direction, nutritionGoal: user.preferences.goal, weeklyRateKg: targets.weeklyRateKg }
+    : { direction: user.preferences.goal === 'weight_loss' ? 'lose' as const : user.preferences.goal === 'muscle_gain' ? 'gain' as const : 'maintain' as const, nutritionGoal: user.preferences.goal, weeklyRateKg: null };
+  const context: WorkoutContext = { ...body.data, training: prefs.data, body: user.body ?? {}, bodyGoal, recentSessions: sessions.map(s => archiveWorkoutDay(s)).filter(s => s.status === 'finished').slice(0, 10).map(({ date, feedback, exercises, notes }) => ({ date, feedback, exercises, notes })) };
   try {
     const generated = await generateWorkout(context);
     const plan = await workoutPlanRepo.create({ userId: req.userId!, ...generated, context });

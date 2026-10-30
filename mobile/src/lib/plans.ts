@@ -48,6 +48,10 @@ function usePlanChange<V>(fn: (vars: V) => Promise<MealPlan>) {
 
 export const useReplacePlan = () =>
   usePlanChange(({ previewToken, target }: { previewToken: string; target: PlanTarget }) => api<MealPlan>('/plans/replace', { method: 'POST', body: { previewToken, ...target, timezone: timezone() } }));
+/** Replaces one meal with a new one that follows the user's request; `remember` saves `avoid` as disliked foods. */
+export const useChangeMeal = (planId: string) =>
+  usePlanChange(({ mealId, request, avoid, remember, revision }: { mealId: string; request: string; avoid: string[]; remember: boolean; revision: number }) =>
+    api<MealPlan>(`/plans/${planId}/meals/${mealId}/change`, { method: 'POST', body: { request, avoid, remember, revision, timezone: timezone() } }));
 export const useMarkEaten = (planId: string) =>
   usePlanChange(async ({ mealId, historyEntryId, eaten, confirm, revision }: { mealId: string; historyEntryId: string | null; eaten: boolean; confirm?: boolean; revision: number }) => {
     if (!eaten) {

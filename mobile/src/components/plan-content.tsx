@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { showAlert } from '@/components/themed-alert';
+import { ChangeMealSheet } from '@/components/change-meal-sheet';
 import { MealCard } from '@/components/meal-card';
 import { ThemedText } from '@/components/themed-text';
 import { Button, ChipGroup } from '@/components/ui';
@@ -20,7 +21,8 @@ import type { Meal, MealPlan, Shortage } from '@/lib/types';
 import { useCalendarDate } from '@/hooks/use-calendar-date';
 import { stockMessage } from '@/lib/stock-message';
 
-type Tab = 'meals' | 'allMeals' | 'shopping';
+/** A day's date, every day, or the shopping list */
+type Tab = string | 'all' | 'shopping';
 
 const shortageLine = (s: Shortage) => `• ${stockMessage(s)}`;
 
@@ -30,12 +32,21 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
   const id = plan._id;
   const toggle = usePurchaseShoppingItem(id);
   const markEaten = useMarkEaten(id);
-  const [tab, setTab] = useState<Tab>('meals');
-
   const isDraft = preview;
   const remaining = plan.shoppingList.length;
   const mealDays = plan.days.filter((day) => day.meals.length > 0);
-  const visibleDays = tab === 'allMeals' ? mealDays : mealDays.filter((day) => day.date === date);
+  const dayTabs = mealDays.map((d) => d.date ?? `day-${d.day}`);
+  // Open on today when the plan covers it, otherwise on the first day
+  const [tab, setTab] = useState<Tab>(() => (dayTabs.includes(date) ? date : dayTabs[0] ?? 'all'));
+  const [changing, setChanging] = useState<Meal | null>(null);
+  const visibleDays = tab === 'all' ? mealDays : mealDays.filter((day) => (day.date ?? `day-${day.day}`) === tab);
+  const tabLabel = (t: Tab) => {
+    if (t === 'all') return 'All days';
+    if (t === 'shopping') return `To buy (${remaining})`;
+    if (t === date) return 'Today';
+    const d = mealDays.find((x) => (x.date ?? `day-${x.day}`) === t);
+    return d?.date ? dateLabel(d.date) : `Day ${d?.day ?? ''}`;
+  };
 
   const onToggleEaten = (meal: Meal) => {
     const run = (confirm: boolean) => {
@@ -67,16 +78,16 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
   return (
     <View style={{ gap: Spacing.three }}>
       <ChipGroup<Tab>
-        options={['meals', 'allMeals', 'shopping']}
+        options={[...dayTabs, ...(dayTabs.length > 1 ? ['all'] : []), 'shopping']}
         value={tab}
         onChange={setTab}
-        format={(t) => (t === 'meals' ? 'Meals' : t === 'allMeals' ? 'Meals(all)' : `Shopping list (${remaining})`)}
+        format={tabLabel}
       />
 
       {tab !== 'shopping' ? (
         <>
           {visibleDays.length === 0 && (
-            <ThemedText themeColor="textSecondary">{tab === 'meals' ? 'No meals planned for today.' : 'No meals planned.'}</ThemedText>
+            <ThemedText themeColor="textSecondary">No meals planned for this day.</ThemedText>
           )}
           {visibleDays.map((d) => {
             const meals = d.meals;
@@ -88,6 +99,7 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
                     key={m._id}
                     meal={m}
                     onToggleEaten={isDraft || (!m.eaten && d.date! > date) ? undefined : () => onToggleEaten(m)}
+                    onChange={isDraft || (d.date && d.date < date) ? undefined : () => setChanging(m)}
                     unavailableLabel={!isDraft && !m.eaten && d.date! > date ? `Available to mark on ${dateLabel(d.date!)}` : undefined}
                     toggling={markEaten.isPending && markEaten.variables?.mealId === m._id}
                     actionDisabled={markEaten.isPending}
@@ -97,6 +109,7 @@ export function PlanContent({ plan, preview = false, onDiscard, busy = false }: 
             );
           })}
           {isDraft && <Button title="Discard preview" variant="danger" onPress={() => onDiscard?.()} disabled={busy || markEaten.isPending || toggle.isPending} />}
+          {!isDraft && <ChangeMealSheet plan={plan} meal={changing} onClose={() => setChanging(null)} />}
         </>
       ) : plan.shoppingList.length === 0 ? (
         <ThemedText themeColor="textSecondary">Nothing to buy. Current stock covers all remaining meals. 🎉</ThemedText>

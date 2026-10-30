@@ -86,3 +86,56 @@ export function exerciseDays(dates: string[], sessions: WorkoutSession[], planne
     return { date, done: d, planned, sessions: done, sets: done.reduce((n, s) => n + completedSets(s), 0), status: dayStatus(d, planned, date === today) };
   });
 }
+// ── targets and goal (Progress & tracking) ──
+
+/** Within this share of the calorie target counts as a day on target; protein needs at least PROTEIN_HIT of the target. */
+export const CALORIE_HIT_BAND = 0.1;
+export const PROTEIN_HIT = 0.9;
+
+export interface TargetDay {
+  date: string; calories: number; proteinGrams: number; hasFood: boolean;
+  calorieHit: boolean; proteinHit: boolean; waterMl: number; waterHit: boolean;
+}
+
+/** Per day: calories and protein against today's targets, and water against the goal. Newest first, like `dates`. */
+export function targetDays(
+  dates: string[], totals: Record<string, NutritionTotals>, targets: { calories: number; proteinGrams: number } | null,
+  water: Record<string, number>, waterGoalMl: number,
+): TargetDay[] {
+  return dates.map((date) => {
+    const t = totals[date];
+    const calories = Math.round(t?.calories ?? 0);
+    const proteinGrams = Math.round(t?.proteinGrams ?? 0);
+    const hasFood = (t?.meals ?? 0) > 0;
+    const waterMl = water[date] ?? 0;
+    return {
+      date, calories, proteinGrams, hasFood, waterMl,
+      calorieHit: !!targets && hasFood && Math.abs(calories - targets.calories) <= targets.calories * CALORIE_HIT_BAND,
+      proteinHit: !!targets && hasFood && proteinGrams >= targets.proteinGrams * PROTEIN_HIT,
+      waterHit: waterGoalMl > 0 && waterMl >= waterGoalMl,
+    };
+  });
+}
+
+/** Counts over finished days (today is still in progress, so it is left out). */
+export function targetSummary(days: TargetDay[], today: string) {
+  const past = days.filter((d) => d.date < today);
+  return {
+    days: past.length,
+    loggedDays: past.filter((d) => d.hasFood).length,
+    calorieDays: past.filter((d) => d.calorieHit).length,
+    proteinDays: past.filter((d) => d.proteinHit).length,
+    waterDays: past.filter((d) => d.waterHit).length,
+  };
+}
+
+/** How far the user has come from their first weigh-in toward the target weight, 0–100. Null without a target or a start. */
+export function goalProgress(weights: { date: string; weightKg: number }[], targetKg: number | null | undefined) {
+  if (!weights.length || targetKg == null) return null;
+  const start = weights[0]!.weightKg;
+  const current = weights[weights.length - 1]!.weightKg;
+  const total = targetKg - start;
+  if (Math.abs(total) < 0.1) return { start, current, target: targetKg, percent: 100, leftKg: 0 };
+  const percent = Math.max(0, Math.min(100, Math.round(((current - start) / total) * 100)));
+  return { start, current, target: targetKg, percent, leftKg: Math.round((targetKg - current) * 10) / 10 };
+}

@@ -47,7 +47,11 @@ export const prescriptionSchema = z.object({
 export const workoutDaySchema = z.object({ date: dateSchema, title: z.string().min(1).max(100), explanation: z.string().min(1).max(600), exercises: z.array(prescriptionSchema).max(8) }).strict();
 export const workoutOutputSchema = z.object({ title: z.string().min(1).max(100), days: z.array(workoutDaySchema).length(7) }).strict();
 export type WorkoutOutput = z.infer<typeof workoutOutputSchema>;
-export interface WorkoutContext { startDate: string; timezone: string; training: TrainingPreferences; body: { heightCm?: number | null; weightKg?: number | null }; recentSessions: unknown[] }
+export interface WorkoutContext {
+  startDate: string; timezone: string; training: TrainingPreferences; body: { heightCm?: number | null; weightKg?: number | null }; recentSessions: unknown[];
+  /** The user's body goal from the target engine, so the week supports it (lose fat, build muscle, keep steady) */
+  bodyGoal?: { direction: 'lose' | 'gain' | 'maintain'; nutritionGoal: string; weeklyRateKg: number | null } | null;
+}
 export function validateWorkout(plan: WorkoutOutput, input: WorkoutContext): string[] {
   const errors: string[] = [];
   const allowed = new Set(availableExercises(input.training).map(e => e.id));

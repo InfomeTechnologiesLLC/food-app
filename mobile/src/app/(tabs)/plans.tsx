@@ -1,9 +1,10 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { FloatingActions } from '@/components/floating-actions';
 
+import { LogFoodSheet } from '@/components/log-food-sheet';
 import { PlanContent } from '@/components/plan-content';
 import { BottomSheet } from '@/components/bottom-sheet';
 import { Screen } from '@/components/screen';
@@ -15,11 +16,15 @@ import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePantry } from '@/lib/pantry';
-import { activePlan, SHOPPING_OPTIONS, shoppingLabel, useGeneratePlan, usePlans, usePlan, useReplacePlan, planTarget, type ShoppingOption } from '@/lib/plans';
+import { activePlan, localDate, SHOPPING_OPTIONS, shoppingLabel, useGeneratePlan, usePlans, usePlan, useReplacePlan, planTarget, type ShoppingOption } from '@/lib/plans';
 import { remaining } from '@/lib/usage';
 import { MEAL_TYPES, type MealPlan, type MealType } from '@/lib/types';
 
 const DAY_OPTIONS = [1, 2, 3, 4, 5, 6, 7] as const;
+/** The plan the coach suggests without being asked: the next 3 days, main meals, a few items to buy. */
+const SUGGESTION = { days: 3, mealTypes: ['breakfast', 'lunch', 'dinner'] as MealType[], maxExtraItems: 5 };
+/** Users we already made an automatic suggestion for in this app session, so it never runs twice. */
+const suggestedFor = new Set<string>();
 
 export default function PlansScreen() {
   const theme = useTheme();
@@ -31,6 +36,7 @@ export default function PlansScreen() {
   const generate = useGeneratePlan();
   const replace = useReplacePlan();
   const [preview, setPreview] = useState<(MealPlan & { previewToken: string }) | null>(null);
+  const [logging, setLogging] = useState(false);
 
   const [days, setDays] = useState<(typeof DAY_OPTIONS)[number]>(3);
   const [mealTypes, setMealTypes] = useState<MealType[]>(['breakfast', 'lunch', 'dinner']);
@@ -51,11 +57,39 @@ export default function PlansScreen() {
       }
     );
 
+  const plansLeft = remaining(user, 'plans');
   const current = activePlan(plans);
   const { data: currentMeals, error: currentError, isLoading: currentLoading } = usePlan(current?._id);
+  const today = localDate();
+  const ended = !!currentMeals && currentMeals.days.every((d) => !d.date || d.date < today);
+  // Errors from the generator sheet show inside the sheet; the rest show on the page
+  const suggestError = !generationOpen && generate.error ? generate.error.message : '';
+
+  /** Plans the next 3 days and saves it straight away (replacing an ended plan), so nothing is lost if the app closes. */
+  const suggest = () => {
+    generate.reset();
+    generate.mutate(SUGGESTION, {
+      onSuccess: (plan) => replace.mutate(
+        { previewToken: plan.previewToken, target: planTarget(currentMeals ?? current) },
+        // Saving failed (for example the plan changed elsewhere): show it as a preview to accept by hand
+        { onError: () => setPreview(plan) },
+      ),
+      onSettled: () => refreshUser(),
+    });
+  };
+
+  // First visit with no meal plan at all: the coach suggests one without being asked
+  const canSuggest = !!user && !isLoading && !plansError && !current && !preview && plansLeft !== 0;
+  useEffect(() => {
+    if (!canSuggest || !user || suggestedFor.has(user._id) || generate.isPending) return;
+    suggestedFor.add(user._id);
+    suggest();
+    // suggest() only reads state captured for this render; run once when a suggestion becomes possible
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSuggest, user?._id]);
+  const suggesting = (generate.isPending && !generationOpen) || (replace.isPending && !preview);
 
   const limitReached = generate.error instanceof ApiError && generate.error.code === 'LIMIT_REACHED';
-  const plansLeft = remaining(user, 'plans');
   // Nothing to cook from, so a pantry-only plan can't be generated
   const pantryOnlyEmpty = maxExtraItems === 0 && pantryLoaded && pantry.length === 0;
 
@@ -72,12 +106,46 @@ export default function PlansScreen() {
             </Section>
             <PlanContent key={preview._id} plan={preview} preview busy={replace.isPending} onDiscard={() => { setPreview(null); replace.reset(); }} />
           </>
+        ) : suggesting ? (
+          <View style={[styles.suggesting, { backgroundColor: theme.backgroundElement }]}>
+            <ActivityIndicator size="large" color={theme.tint} />
+            <ThemedText style={{ fontWeight: 700, textAlign: 'center' }}>Your coach is planning your next 3 days</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
+              Breakfast, lunch and dinner from your pantry, your goal and the foods you like. This takes about 20–40 seconds.
+            </ThemedText>
+          </View>
         ) : isLoading || currentLoading ? <ActivityIndicator /> : currentMeals ? (
-          <PlanContent key={currentMeals._id} plan={currentMeals} />
+          <>
+            <View style={[styles.header, { backgroundColor: theme.backgroundElement }]}>
+              <MaterialIcons name="auto-awesome" size={22} color={theme.tint} />
+              <View style={{ flex: 1 }}>
+                <ThemedText type="smallBold">{ended ? 'This meal plan has ended' : 'Suggested by your coach'}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">{ended ? 'Get a fresh plan for the next 3 days.' : 'From your pantry and goal. Change any meal you don’t like.'}</ThemedText>
+              </View>
+            </View>
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                {ended
+                  ? <Button title="Plan next 3 days" icon="sparkles-outline" onPress={suggest} disabled={plansLeft === 0} />
+                  : <Button title="Log food" icon="add-circle-outline" variant="secondary" onPress={() => setLogging(true)} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button title="New plan" icon="options-outline" variant="secondary" onPress={() => { generate.reset(); setGenerationOpen(true); }} />
+              </View>
+            </View>
+            {!!suggestError && <ThemedText themeColor="danger">{suggestError}</ThemedText>}
+            <PlanContent key={currentMeals._id} plan={currentMeals} />
+          </>
         ) : currentError || plansError ? (
           <ThemedText themeColor="danger">{(currentError ?? plansError)?.message}</ThemedText>
         ) : (
-          <ThemedText themeColor="textSecondary">No planned meals yet. Tap + to generate a plan.</ThemedText>
+          <>
+            <ThemedText themeColor="textSecondary">No meal plan yet. Your coach plans meals from your pantry that fit your goal, and lists anything you need to buy.</ThemedText>
+            {!!suggestError && <ThemedText themeColor="danger">{suggestError}</ThemedText>}
+            {plansLeft !== 0 && <Button title="Suggest 3 days of meals" icon="sparkles-outline" onPress={suggest} />}
+            <Button title="Choose days and meals" icon="options-outline" variant="secondary" onPress={() => { generate.reset(); setGenerationOpen(true); }} />
+            <Button title="Ate something? Log food" icon="add-circle-outline" variant="secondary" onPress={() => setLogging(true)} />
+          </>
         )}
       </Screen>
       <FloatingActions>
@@ -97,6 +165,7 @@ export default function PlansScreen() {
           <MaterialIcons name="add" size={30} color={theme.tintText} />
         </Pressable>
       </FloatingActions>
+      <LogFoodSheet visible={logging} onClose={() => setLogging(false)} />
       <BottomSheet visible={generationOpen} title="Generate meal plan" onClose={() => setGenerationOpen(false)}>
         <ScrollView style={{ maxHeight: height * 0.65 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <ThemedView type="backgroundElement" style={{ borderRadius: 16, padding: Spacing.three, gap: Spacing.three }}>
@@ -146,6 +215,9 @@ export default function PlansScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
+  suggesting: { alignItems: 'center', gap: Spacing.two, padding: Spacing.four, borderRadius: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, padding: Spacing.three, borderRadius: 16 },
+  row: { flexDirection: 'row', gap: Spacing.two },
   historyButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   addButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });

@@ -10,6 +10,14 @@ import { prescribedExercises, patchWorkoutSet, workoutProgress, isSetUnlocked, w
 import { readLocal, writeLocal } from '@/lib/local-store';
 import type { LocalSession, SetLog, WorkoutDay, WorkoutSession } from '@/lib/exercise-types';
 
+/** Completes every remaining set with its planned reps or time (sets without them stay as they are). */
+function markAllDone(s: WorkoutSession): WorkoutSession {
+  return { ...s, exercises: s.exercises.map((e) => ({ ...e, sets: e.sets.map((set) => {
+    const hasAmount = e.definition.tracking === 'reps' ? set.reps : set.durationSeconds;
+    return set.status === 'pending' && hasAmount ? { ...set, status: 'completed' as const } : set;
+  }) })) };
+}
+
 export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?: WorkoutDay; planId?: string }) {
   const theme = useTheme();
   const { user, needsSignIn } = useAuth();
@@ -73,6 +81,10 @@ export function WorkoutTracker({ row, day, planId }: { row?: LocalSession; day?:
       <ThemedText type="small" themeColor="textSecondary">{row ? session.date : 'Today'}</ThemedText>
       {editable && <ThemedText type="small" themeColor="textSecondary">Changes save automatically. Editable until the day ends.</ThemedText>}
       <ThemedText type="smallBold">{missing ? 'Exercise details unavailable' : `${completed} / ${total} sets completed${skipped ? ` · ${skipped} skipped` : ''}`}</ThemedText>
+      {editable && !missing && total > 0 && completed + skipped < total && (
+        <Button title="Mark workout as done" icon="checkmark-done-outline" onPress={() => mutate(markAllDone)} />
+      )}
+      {!missing && total > 0 && completed + skipped === total && <ThemedText type="smallBold" themeColor="tint">Workout done. Great job!</ThemedText>}
       {!missing && <View accessibilityRole="progressbar" accessibilityLabel="Workout sets completed" accessibilityValue={{ min: 0, max: total, now: completed }} style={[styles.track, { backgroundColor: theme.backgroundSelected }]}>
         <View style={[styles.track, { width: `${total ? completed / total * 100 : 0}%`, backgroundColor: theme.tint }]} />
       </View>}
